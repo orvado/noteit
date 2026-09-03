@@ -1,0 +1,76 @@
+# NoteIt — lightweight macOS text editor
+
+Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple documents in tabs, instant launch, minimal chrome.
+
+## Features
+
+- **New / Open / Save / Save As** (`⌘N` `⌘T` `⌘O` `⌘S` `⇧⌘S`), Save All (`⌥⌘S`), Revert, Close (`⌘W`)
+- **Auto-save** (default 5s, toggle + interval in Settings; untitled drafts kept in `~/Library/Application Support/NoteIt/Autosave`)
+- **Sophisticated search & replace**: case-sensitive, regex (`.*`), whole-word, wrap-around, live match count, highlight-all, Replace / Replace All
+- **Spellcheck** toggle (`⌥⌘K`, status bar “Spell”)
+- **Word wrap** toggle (`⌥⌘L`, status bar “Wrap”), horizontal scroll when off
+- **Snippets**: `trigger + Tab` to expand, `{date}`/`{time}` templates, `⌘J` manager + insert, defaults: `date time lorem sig todo swiftlet swiftfunc`
+- **Undo / Redo** (`⌘Z` `⇧⌘Z`), **Cut / Copy / Paste / Select All** (`⌘X C V A`) — native responder chain
+- **Find next / previous** (`⌘G` `⇧⌘G`), native Find panel also available
+- **Go to line** (`⌘L`)
+- **Multiple tabs + multiple windows** (in-app tab bar + `⇧⌘N` new window + native tab bar)
+- **Plain-text only** by default; per-doc “Format” checkbox (status bar) gates Bold (`⌘B`) / Italic (`⌘I`) / Underline (`⌘U`)
+- **Line numbers** ruler (`⇧⌘L`), font size `⌘+` `⌘-` `⌘0`
+- **Dark mode**: System / Light / Dark (`⌥⌘D` for dark), native vibrancy
+- **Quick open** (`⌘P`) over recents + **Recent files** menu + `⌘O` browse
+- **Export PDF** (`⇧⌘E`), Export Text, **Print** (`⇧⌘P`)
+- **Minimal settings** (`⌘,`): font, size, wrap, line numbers, spell, plain-text, autosave, tab width, appearance
+- Status bar: Ln/Col, words, lines, saved state, filename
+
+## Run
+
+Requires macOS 14+, Swift 5.10+ (CommandLineTools is enough — no full Xcode needed).
+
+```sh
+# dev (opens GUI)
+swift run
+
+# release .app bundle
+./scripts/make-app.sh
+open dist/NoteIt.app
+```
+
+With full Xcode installed you can also do `open Package.swift` — Xcode generates an `.xcodeproj` UI automatically.
+
+## Layout
+
+```
+Sources/NoteIt/
+  NoteItApp.swift    — @main App, WindowGroup, appearance
+  Models.swift       — EditorDocument, TextSnippet, AppSettings, SearchOptions
+  DocumentStore.swift— tabs, file IO, recents, autosave, find/replace engine, goto, snippets, export/print
+  EditorView.swift   — NSTextView wrapper + line-number ruler, wrap, spell, tab width
+  ContentView.swift  — tab bar, editor, status bar, toolbar + notification bridge
+  Panels.swift       — SearchReplaceBar, GoToLine, QuickOpen (⌘P), Snippets, Settings
+  Commands.swift     — all menus + shortcuts, Format gating
+Resources/Info.plist — app bundle metadata
+scripts/make-app.sh  — SwiftPM → NoteIt.app packager
+```
+
+## Shortcuts cheat sheet
+
+| Action | Shortcut |
+|---|---|
+| New tab / window | `⌘T` / `⇧⌘N` |
+| Open / Quick open | `⌘O` / `⌘P` |
+| Save / As / All | `⌘S` / `⇧⌘S` / `⌥⌘S` |
+| Find / Replace | `⌘F` / `⌥⌘F` |
+| Next / Prev | `⌘G` / `⇧⌘G` |
+| Go to line | `⌘L` |
+| Snippets | `⌘J`, expand with `Tab` |
+| Wrap / Lines / Spell | `⌥⌘L` / `⇧⌘L` / `⌥⌘K` |
+| Font + / − / 0 | `⌘+` `⌘-` `⌘0` |
+| Dark appearance | `⌥⌘D` |
+| Export PDF / Print | `⇧⌘E` / `⇧⌘P` |
+| Settings | `⌘,` |
+
+## Notes
+
+- Lightweight: no WebView/Electron, cold start ~instant, memory ~tens of MB.
+- Plain-text UTF-8 throughout; formatting attributes are only kept when “Format” is on.
+- Autosave writes through to the file URL when present, otherwise to drafts (restored on launch).

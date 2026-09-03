@@ -1,0 +1,501 @@
+import Foundation
+import AppKit
+import SwiftUI
+import Combine
+
+@MainActor
+final class DocumentStore: ObservableObject {
+    @Published var documents: [EditorDocument] = []
+    @Published var selectedID: UUID?
+    @Published var settings = AppSettings()
+    @Published var snippets: [TextSnippet] = TextSnippet.defaults
+    @Published var recentFiles: [URL] = []
+    @Published var search = SearchOptions()
+
+    /// Weak registry of live NSTextViews per document, for find/goto/print.
+    var textViews: [UUID: NSTextView] = [:]
+    private var autosaveTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
+
+    var selectedDocument: EditorDocument? {
+        guard let id = selectedID else { return documents.first }
+        return documents.first(where: { $0.id == id }) ?? documents.first
+    }
+
+    private var settingsKey: String { "NoteIt.settings.v1" }
+    private var snippetsKey: String { "NoteIt.snippets.v1" }
+    private var recentsKey: String { "NoteIt.recents.v1" }
+
+    init() {
+        loadPersistedState()
+        if documents.isEmpty { newDocument() }
+        startAutosave()
+        // Persist settings/snippets/recents on change
+        $settings.sink { [weak self] s in self?.saveSettings(s) }.store(in: &cancellables)
+        $snippets.sink { [weak self] s in self?.saveSnippets(s) }.store(in: &cancellables)
+        $recentFiles.sink { [weak self] r in self?.saveRecents(r) }.store(in: &cancellables)
+    }
+
+    // MARK: - Tabs
+    func newDocument(text: String = "", fileURL: URL? = nil) {
+        let doc = EditorDocument(text: text, fileURL: fileURL)
+        documents.append(doc)
+        selectedID = doc.id
+    }
+
+    func closeDocument(_ doc: EditorDocument) {
+        if let tv = textViews[doc.id] { syncFromTextView(tv, to: doc) }
+        if doc.isDirty {
+            let alert = NSAlert()
+            alert.messageText = "Save changes to \"\(doc.title)\"?"
+            alert.informativeText = "Your changes will be lost if you don't save."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Don't Save")
+            alert.addButton(withTitle: "Cancel")
+            let resp = alert.runModal()
+            if resp == .alertFirstButtonReturn {
+                save(doc, saveAs: doc.fileURL == nil)
+                if doc.isDirty { return } // save cancelled
+            } else if resp == .alertThirdButtonReturn {
+                return
+            }
+        }
+        // Drop any autosave draft for this doc — don't leak "Untitled •" tabs.
+        if let dir = autosaveDir() {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
+        }
+        textViews.removeValue(forKey: doc.id)
+        documents.removeAll { $0.id == doc.id }
+        if documents.isEmpty { newDocument() }
+        if selectedID == doc.id { selectedID = documents.last?.id }
+        pruneStaleDrafts()
+    }
+
+    func select(_ doc: EditorDocument) { selectedID = doc.id }
+
+    // MARK: - File IO
+    func open() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.plainText, .init(filenameExtension: "md")!, .init(filenameExtension: "swift")!, .init(filenameExtension: "txt")!]
+        // Fallback: allow any text
+        panel.allowsOtherFileTypes = true
+        if panel.runModal() == .OK {
+            for url in panel.urls { open(url: url) }
+        }
+    }
+
+    func open(url: URL) {
+        if let existing = documents.first(where: { $0.fileURL == url }) {
+            selectedID = existing.id
+            // reload from disk
+            if let s = try? String(contentsOf: url, encoding: .utf8) {
+                existing.text = s
+                existing.isDirty = false
+                if let tv = textViews[existing.id] {
+                    tv.string = s
+                    existing.isDirty = false
+                }
+            }
+            pushRecent(url)
+            return
+        }
+        do {
+            let s = try String(contentsOf: url, encoding: .utf8)
+            // Reuse empty untitled tab
+            if documents.count == 1, let only = documents.first,
+               only.fileURL == nil, only.text.isEmpty, !only.isDirty {
+                only.text = s; only.fileURL = url; only.isDirty = false
+                if let tv = textViews[only.id] { tv.string = s; only.isDirty = false }
+                selectedID = only.id
+            } else {
+                newDocument(text: s, fileURL: url)
+                documents.last?.isDirty = false
+            }
+            pushRecent(url)
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    func save(_ doc: EditorDocument, saveAs: Bool = false) {
+        if let tv = textViews[doc.id] { syncFromTextView(tv, to: doc) }
+        var url = doc.fileURL
+        if saveAs || url == nil {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.plainText]
+            panel.nameFieldStringValue = doc.fileURL?.lastPathComponent ?? "Untitled.txt"
+            if panel.runModal() == .OK, let u = panel.url {
+                url = u
+            } else { return }
+        }
+        guard let url else { return }
+        do {
+            try doc.text.write(to: url, atomically: true, encoding: .utf8)
+            doc.fileURL = url
+            doc.isDirty = false
+            pushRecent(url)
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        } catch {
+            let a = NSAlert(error: error); a.runModal()
+        }
+    }
+
+    func saveAll() { for d in documents where d.isDirty { save(d) } }
+
+    func revert(_ doc: EditorDocument) {
+        guard let url = doc.fileURL,
+              let s = try? String(contentsOf: url, encoding: .utf8) else { return }
+        doc.text = s; doc.isDirty = false
+        textViews[doc.id]?.string = s
+        doc.isDirty = false
+    }
+
+    // MARK: - Recents
+    func pushRecent(_ url: URL) {
+        recentFiles.removeAll { $0 == url }
+        recentFiles.insert(url, at: 0)
+        recentFiles = Array(recentFiles.prefix(15))
+    }
+
+    // MARK: - Autosave
+    func startAutosave() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: max(2, settings.autoSaveInterval), repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.autosaveTick() }
+        }
+    }
+
+    func autosaveTick() {
+        guard settings.autoSaveEnabled else { return }
+        let fm = FileManager.default
+        for doc in documents where doc.isDirty {
+            if let tv = textViews[doc.id] { syncFromTextView(tv, to: doc) }
+            if let url = doc.fileURL {
+                try? doc.text.write(to: url, atomically: true, encoding: .utf8)
+                doc.isDirty = false
+                // Don't leave a stale draft behind once it's been saved
+                if let dir = autosaveDir() {
+                    try? fm.removeItem(at: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
+                }
+            } else {
+                // Draft autosave so relaunch restores content.
+                // Skip empty untitled docs — otherwise every launch leaks a draft.
+                if doc.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+                if let dir = autosaveDir() {
+                    try? doc.text.write(to: dir.appendingPathComponent("\(doc.id.uuidString).txt"), atomically: true, encoding: .utf8)
+                    // keep isDirty true (still untitled) but draft is safe
+                }
+            }
+        }
+        pruneStaleDrafts()
+    }
+
+    /// Remove drafts whose doc no longer exists or whose doc is now saved.
+    func pruneStaleDrafts() {
+        guard let dir = autosaveDir(),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        let liveIDs = Set(documents.map { $0.id.uuidString })
+        for f in files where f.pathExtension == "txt" {
+            let base = f.deletingPathExtension().lastPathComponent
+            // If no live doc owns this draft, delete it (user closed without saving an empty doc,
+            // or doc was saved and draft cleaned via autosaveTick but an old file remains).
+            if !liveIDs.contains(base) {
+                try? FileManager.default.removeItem(at: f)
+            }
+        }
+    }
+
+    func autosaveDir() -> URL? {
+        let fm = FileManager.default
+        guard let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let dir = base.appendingPathComponent("NoteIt/Autosave", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    // MARK: - TextView sync
+    func syncFromTextView(_ tv: NSTextView, to doc: EditorDocument) {
+        let s = tv.string
+        if doc.text != s { doc.text = s }
+    }
+
+    func registerTextView(_ tv: NSTextView, for id: UUID) { textViews[id] = tv }
+    func unregisterTextView(for id: UUID) { textViews.removeValue(forKey: id) }
+
+    // MARK: - Persistence
+    private func loadPersistedState() {
+        let ud = UserDefaults.standard
+        if let d = ud.data(forKey: settingsKey),
+           let s = try? JSONDecoder().decode(AppSettings.self, from: d) {
+            settings = s
+        }
+        if let d = ud.data(forKey: snippetsKey),
+           let s = try? JSONDecoder().decode([TextSnippet].self, from: d) {
+            snippets = s
+        }
+        if let arr = ud.array(forKey: recentsKey) as? [String] {
+            recentFiles = arr.compactMap { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        }
+        // Restore autosaved drafts (and delete files as we go so we don't
+        // re-restore the same drafts on the *next* launch — previous bug
+        // used a fresh UUID per doc, leaking 256 files).
+        if let dir = autosaveDir(),
+           let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+            // Restore in mtime order so tab order is stable, cap to 20 so a
+            // corrupted dir can't spawn hundreds of tabs.
+            let sorted = files.filter { $0.pathExtension == "txt" }.sorted {
+                let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return a < b
+            }.prefix(20)
+            for f in sorted {
+                if let s = try? String(contentsOf: f, encoding: .utf8),
+                   !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let idStr = Optional(f.deletingPathExtension().lastPathComponent),
+                   let uuid = UUID(uuidString: idStr) {
+                    let doc = EditorDocument(text: s)
+                    // Preserve the draft's ID so future autosaves overwrite
+                    // the same file instead of leaking a new one each launch.
+                    // EditorDocument.id is let; store draft -> doc mapping via
+                    // renaming file to new doc's ID.
+                    documents.append(doc)
+                    doc.isDirty = true
+                    // Rename old draft file to new doc's file so prune/cleanup works.
+                    try? FileManager.default.moveItem(at: f, to: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
+                    // Keep uuid for reference if needed (no-op).
+                    _ = uuid
+                } else {
+                    // Empty/corrupt draft — just delete it.
+                    try? FileManager.default.removeItem(at: f)
+                }
+            }
+            // Any remaining txt files beyond the cap are stale leaks — delete.
+            let remaining = files.filter { $0.pathExtension == "txt" }
+            for f in remaining where !sorted.contains(f) {
+                try? FileManager.default.removeItem(at: f)
+            }
+        }
+    }
+
+    private func saveSettings(_ s: AppSettings) {
+        if let d = try? JSONEncoder().encode(s) { UserDefaults.standard.set(d, forKey: settingsKey) }
+    }
+    private func saveSnippets(_ s: [TextSnippet]) {
+        if let d = try? JSONEncoder().encode(s) { UserDefaults.standard.set(d, forKey: snippetsKey) }
+    }
+    private func saveRecents(_ r: [URL]) {
+        UserDefaults.standard.set(r.map { $0.path }, forKey: recentsKey)
+    }
+
+    // MARK: - Find / Replace engine
+    func nsFindOptions() -> NSString.CompareOptions {
+        var o: NSString.CompareOptions = []
+        if !search.caseSensitive { o.insert(.caseInsensitive) }
+        return o
+    }
+
+    func ranges(of query: String, in text: String) -> [NSRange] {
+        guard !query.isEmpty else { return [] }
+        if search.useRegex {
+            do {
+                var opts: NSRegularExpression.Options = []
+                if !search.caseSensitive { opts.insert(.caseInsensitive) }
+                let re = try NSRegularExpression(pattern: query, options: opts)
+                let ns = text as NSString
+                return re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { $0.range }
+            } catch { return [] }
+        } else {
+            var out: [NSRange] = []
+            let ns = text as NSString
+            let opts = nsFindOptions()
+            var searchRange = NSRange(location: 0, length: ns.length)
+            while searchRange.location < ns.length {
+                let r = ns.range(of: query, options: opts, range: searchRange)
+                if r.location == NSNotFound { break }
+                if search.wholeWord {
+                    let beforeOK: Bool = {
+                        if r.location == 0 { return true }
+                        let c = ns.character(at: r.location - 1)
+                        guard let sc = UnicodeScalar(c) else { return true }
+                        return CharacterSet.alphanumerics.contains(sc) == false
+                    }()
+                    let afterOK: Bool = {
+                        if NSMaxRange(r) >= ns.length { return true }
+                        let c = ns.character(at: NSMaxRange(r))
+                        guard let sc = UnicodeScalar(c) else { return true }
+                        return CharacterSet.alphanumerics.contains(sc) == false
+                    }()
+                    if !(beforeOK && afterOK) {
+                        searchRange = NSRange(location: r.location + 1, length: ns.length - r.location - 1)
+                        continue
+                    }
+                }
+                out.append(r)
+                let next = r.location + max(1, r.length)
+                if next >= ns.length { break }
+                searchRange = NSRange(location: next, length: ns.length - next)
+            }
+            return out
+        }
+    }
+
+    func findNext(wrap: Bool? = nil) {
+        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        syncFromTextView(tv, to: doc)
+        let rs = ranges(of: search.query, in: doc.text)
+        guard !rs.isEmpty else { NSSound.beep(); return }
+        let cur = tv.selectedRange().location
+        let wrap = wrap ?? search.wrapAround
+        if let nxt = rs.first(where: { $0.location > cur }) ?? (wrap ? rs.first : nil) {
+            tv.setSelectedRange(nxt)
+            tv.scrollRangeToVisible(nxt)
+            tv.showFindIndicator(for: nxt)
+        } else { NSSound.beep() }
+    }
+
+    func findPrevious() {
+        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        syncFromTextView(tv, to: doc)
+        let rs = ranges(of: search.query, in: doc.text)
+        guard !rs.isEmpty else { NSSound.beep(); return }
+        let cur = tv.selectedRange().location
+        if let prv = rs.last(where: { $0.location < cur }) ?? (search.wrapAround ? rs.last : nil) {
+            tv.setSelectedRange(prv)
+            tv.scrollRangeToVisible(prv)
+            tv.showFindIndicator(for: prv)
+        } else { NSSound.beep() }
+    }
+
+    func replaceCurrent() {
+        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        let sel = tv.selectedRange()
+        let ns = doc.text as NSString
+        guard sel.location != NSNotFound, NSMaxRange(sel) <= ns.length else { return }
+        let selectedText = ns.substring(with: sel)
+        let matches: Bool = {
+            if search.useRegex {
+                return (try? NSRegularExpression(pattern: search.query, options: search.caseSensitive ? [] : .caseInsensitive))
+                    .map { $0.firstMatch(in: selectedText, range: NSRange(location: 0, length: (selectedText as NSString).length)) != nil } ?? false
+            } else if search.caseSensitive { return selectedText == search.query }
+            else { return selectedText.lowercased() == search.query.lowercased() }
+        }()
+        if matches {
+            tv.shouldChangeText(in: sel, replacementString: search.replacement)
+            tv.replaceCharacters(in: sel, with: search.replacement)
+            tv.didChangeText()
+            syncFromTextView(tv, to: doc)
+        }
+        findNext()
+    }
+
+    func replaceAll() {
+        guard let doc = selectedDocument, let tv = textViews[doc.id], !search.query.isEmpty else { return }
+        syncFromTextView(tv, to: doc)
+        let original = doc.text
+        var result: String
+        if search.useRegex {
+            do {
+                let re = try NSRegularExpression(pattern: search.query, options: search.caseSensitive ? [] : .caseInsensitive)
+                result = re.stringByReplacingMatches(in: original, range: NSRange(location: 0, length: (original as NSString).length), withTemplate: NSRegularExpression.escapedTemplate(for: search.replacement))
+            } catch { NSSound.beep(); return }
+        } else {
+            let rs = ranges(of: search.query, in: original).reversed()
+            guard !rs.isEmpty else { NSSound.beep(); return }
+            let m = NSMutableString(string: original)
+            for r in rs { m.replaceCharacters(in: r, with: search.replacement) }
+            result = m as String
+        }
+        if result != original {
+            tv.undoManager?.beginUndoGrouping()
+            tv.string = result
+            tv.undoManager?.endUndoGrouping()
+            tv.didChangeText()
+            syncFromTextView(tv, to: doc)
+        }
+    }
+
+    func goToLine(_ line: Int) {
+        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        syncFromTextView(tv, to: doc)
+        let ns = doc.text as NSString
+        var loc = 0, count = 1
+        let target = max(1, line)
+        while count < target {
+            let r = ns.range(of: "\n", options: [], range: NSRange(location: loc, length: ns.length - loc))
+            if r.location == NSNotFound { NSSound.beep(); return }
+            loc = r.location + 1
+            count += 1
+        }
+        var len = 0
+        let lineRange = ns.range(of: "\n", options: [], range: NSRange(location: loc, length: ns.length - loc))
+        len = (lineRange.location == NSNotFound) ? ns.length - loc : lineRange.location - loc
+        let range = NSRange(location: loc, length: len)
+        tv.setSelectedRange(range)
+        tv.scrollRangeToVisible(range)
+        tv.showFindIndicator(for: range)
+        // focus
+        tv.window?.makeFirstResponder(tv)
+    }
+
+    // MARK: - Snippets
+    func insertSnippet(_ snippet: TextSnippet) {
+        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        let expansion = snippet.resolvedExpansion()
+        let sel = tv.selectedRange()
+        tv.shouldChangeText(in: sel, replacementString: expansion)
+        tv.replaceCharacters(in: sel, with: expansion)
+        tv.didChangeText()
+        syncFromTextView(tv, to: doc)
+        tv.window?.makeFirstResponder(tv)
+    }
+
+    func expandTriggerIfNeeded(in tv: NSTextView) -> Bool {
+        // Tab-triggered snippet expansion: word before caret matches trigger?
+        let sel = tv.selectedRange()
+        guard sel.length == 0, sel.location > 0 else { return false }
+        let ns = tv.string as NSString
+        let upto = min(sel.location, ns.length)
+        let prefix = ns.substring(to: upto)
+        let word = prefix.components(separatedBy: CharacterSet.whitespacesAndNewlines).last?
+            .components(separatedBy: CharacterSet(charactersIn: "(){}[];,.\"'")).last ?? ""
+        guard !word.isEmpty,
+              let snip = snippets.first(where: { $0.trigger == word }) else { return false }
+        let range = NSRange(location: upto - (word as NSString).length, length: (word as NSString).length)
+        tv.shouldChangeText(in: range, replacementString: snip.resolvedExpansion())
+        tv.replaceCharacters(in: range, with: snip.resolvedExpansion())
+        tv.didChangeText()
+        if let doc = documents.first(where: { textViews[$0.id] === tv }) {
+            syncFromTextView(tv, to: doc)
+        }
+        return true
+    }
+
+    // MARK: - Export / Print
+    func exportPDF(_ doc: EditorDocument) {
+        guard let tv = textViews[doc.id] else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = "\(doc.title).pdf"
+        if panel.runModal() == .OK, let url = panel.url {
+            // Render text view content to PDF
+            let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 566, height: 800))
+            view.string = doc.text
+            view.font = tv.font
+            let data = view.dataWithPDF(inside: view.bounds)
+            try? data.write(to: url)
+        }
+    }
+
+    func exportText(_ doc: EditorDocument) { save(doc, saveAs: true) }
+
+    func printDocument(_ doc: EditorDocument) {
+        guard let tv = textViews[doc.id] else { return }
+        let printInfo = NSPrintInfo.shared
+        printInfo.paperSize = NSMakeSize(595, 842)
+        let op = NSPrintOperation(view: tv, printInfo: printInfo)
+        op.run()
+    }
+}

@@ -4,6 +4,7 @@ import AppKit
 // MARK: - Search / Replace bar
 struct SearchReplaceBar: View {
     @ObservedObject var store: DocumentStore
+    @Binding var showFind: Bool
     @Binding var showReplace: Bool
     @FocusState private var focused: Bool
 
@@ -41,7 +42,7 @@ struct SearchReplaceBar: View {
                         .font(.caption).foregroundStyle(.secondary).frame(minWidth: 70, alignment: .leading)
                 }
                 Spacer()
-                Button(action: { store.search.query = ""; clearHighlight() }) {
+                Button(action: close) {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }.buttonStyle(.plain).help("Close (Esc)")
             }
@@ -62,6 +63,23 @@ struct SearchReplaceBar: View {
         .background(.bar)
         .onChange(of: store.search.query) { highlightAll() }
         .onAppear { focused = true }
+        // The button's help text promises Esc; make it actually work.
+        .onExitCommand(perform: close)
+    }
+
+    /// Dismiss the whole bar (find + replace), drop the search highlights and
+    /// hand focus back to the editor so the user can keep typing.
+    private func close() {
+        store.search.query = ""
+        clearHighlight()
+        showFind = false
+        showReplace = false
+        DispatchQueue.main.async { refocusEditor() }
+    }
+
+    private func refocusEditor() {
+        guard let doc = store.selectedDocument, let tv = store.textViews[doc.id] else { return }
+        tv.window?.makeFirstResponder(tv)
     }
 
     private func highlightAll() {

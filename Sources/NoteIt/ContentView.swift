@@ -15,7 +15,7 @@ struct ContentView: View {
             tabBar
             Divider()
             if showFind || showReplace {
-                SearchReplaceBar(store: store, showReplace: $showReplace)
+                SearchReplaceBar(store: store, showFind: $showFind, showReplace: $showReplace)
                 Divider()
             }
             editorArea

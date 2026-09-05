@@ -344,7 +344,11 @@ public sealed class DocumentStore : INotifyPropertyChanged
         catch { }
     }
 
-    private void SaveSnippets()
+    /// <summary>Public so the snippets manager can persist in-place edits
+    /// (CollectionChanged only fires for add/remove, not property edits).</summary>
+    /// <summary>Public so the snippets manager can persist in-place edits
+    /// (CollectionChanged only fires for add/remove, not property edits).</summary>
+    public void SaveSnippets()
     {
         try { File.WriteAllText(Path.Combine(AppDir(), "snippets.json"), JsonSerializer.Serialize(Snippets.ToList(), JsonOpts)); }
         catch { }

@@ -4,6 +4,35 @@ using System.Windows.Input;
 
 namespace NoteIt;
 
+/// <summary>Windows "dark apps" mode resolves WPF's default system text brush to
+/// white while unstyled dialogs stay light, rendering text invisible (white on
+/// white). These helpers pin explicit light colors on dialogs that don't use the
+/// app's themed brushes. TextBoxes and ComboBoxes need individual pinning because
+/// their theme styles override values inherited from the window.</summary>
+internal static class LightDialog
+{
+    public static void Apply(Window w)
+    {
+        w.Foreground = System.Windows.Media.Brushes.Black;
+        w.Background = System.Windows.Media.Brushes.White;
+    }
+
+    public static void Pin(TextBox box)
+    {
+        box.Foreground = System.Windows.Media.Brushes.Black;
+        box.Background = System.Windows.Media.Brushes.White;
+    }
+
+    public static void Pin(ComboBox box)
+    {
+        box.Foreground = System.Windows.Media.Brushes.Black;
+        box.Background = System.Windows.Media.Brushes.White;
+    }
+
+    public static void Pin(ListBox box)
+        => box.Foreground = System.Windows.Media.Brushes.Black;
+}
+
 /// <summary>Go to Line dialog (parity with macOS GoToLineSheet, Ctrl+L).</summary>
 public sealed class GoToLineWindow : Window
 {
@@ -17,6 +46,7 @@ public sealed class GoToLineWindow : Window
         Height = 190;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
+        LightDialog.Apply(this);
 
         var doc = App.Store.SelectedDocument;
         var panel = new StackPanel { Margin = new Thickness(20) };
@@ -28,6 +58,7 @@ public sealed class GoToLineWindow : Window
             Margin = new Thickness(0, 0, 0, 8)
         });
         _box = new TextBox { Width = 180, Text = doc != null ? doc.CursorLine.ToString() : "" };
+        LightDialog.Pin(_box);
         _box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Go(); } };
         panel.Children.Add(_box);
         var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) };
@@ -62,9 +93,11 @@ public sealed class QuickOpenWindow : Window
         Width = 540;
         Height = 360;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        LightDialog.Apply(this);
 
         var panel = new DockPanel { Margin = new Thickness(16) };
         _filter = new TextBox { Margin = new Thickness(0, 0, 0, 8) };
+        LightDialog.Pin(_filter);
         _filter.SetValue(TextBox.ToolTipProperty, "Type to filter recents, Enter to open, Browse for files");
         _filter.TextChanged += (_, _) => Refresh();
         _filter.KeyDown += (_, e) => { if (e.Key == Key.Enter) OpenFirst(); };
@@ -90,6 +123,7 @@ public sealed class QuickOpenWindow : Window
         panel.Children.Add(buttons);
 
         _list = new ListBox();
+        LightDialog.Pin(_list);
         _list.MouseDoubleClick += (_, _) => OpenSelected();
         _list.KeyDown += (_, e) => { if (e.Key == Key.Enter) OpenSelected(); };
         panel.Children.Add(_list);
@@ -169,17 +203,11 @@ public sealed class SnippetsWindow : Window
         MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        // Windows "dark apps" mode resolves WPF's default system text brush to
-        // white while this dialog stays light, rendering text invisible. Pin
-        // explicit light colors; TextBoxes need their own (their theme style
-        // overrides inherited values).
-        Foreground = System.Windows.Media.Brushes.Black;
-        Background = System.Windows.Media.Brushes.White;
+        // Windows "dark apps" mode renders default-styled dialog text invisible
+        // (see LightDialog).
+        LightDialog.Apply(this);
         foreach (var box in new[] { _filter, _triggerBox, _descriptionBox, _expansionBox, _preview })
-        {
-            box.Foreground = System.Windows.Media.Brushes.Black;
-            box.Background = System.Windows.Media.Brushes.White;
-        }
+            LightDialog.Pin(box);
         _preview.Background = System.Windows.Media.Brushes.WhiteSmoke;
 
         var root = new DockPanel();
@@ -562,6 +590,7 @@ public sealed class SettingsWindow : Window
         Height = 480;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
+        LightDialog.Apply(this);
 
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = "Settings", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
@@ -569,6 +598,7 @@ public sealed class SettingsWindow : Window
         // Appearance
         panel.Children.Add(new TextBlock { Text = "Appearance" });
         var appearance = new ComboBox { Margin = new Thickness(0, 2, 0, 8) };
+        LightDialog.Pin(appearance);
         appearance.Items.Add("System"); appearance.Items.Add("Light"); appearance.Items.Add("Dark");
         appearance.SelectedIndex = (int)s.Appearance;
         appearance.SelectionChanged += (_, _) => s.Appearance = (AppSettings.AppearanceMode)appearance.SelectedIndex;
@@ -577,6 +607,7 @@ public sealed class SettingsWindow : Window
         // Font
         panel.Children.Add(new TextBlock { Text = "Font" });
         var font = new ComboBox { Margin = new Thickness(0, 2, 0, 4) };
+        LightDialog.Pin(font);
         foreach (string f in new[] { "Cascadia Mono", "Cascadia Code", "Consolas", "Courier New", "Segoe UI", "Arial" })
             font.Items.Add(f);
         font.Text = s.FontName;

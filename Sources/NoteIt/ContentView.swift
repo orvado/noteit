@@ -136,21 +136,42 @@ struct TabChip: View {
     @ObservedObject var doc: EditorDocument
     var isSelected: Bool
     @ObservedObject var store: DocumentStore
+    @State private var hoveringClose = false
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: doc.fileURL == nil ? "doc" : "doc.text.fill")
                 .foregroundColor(isSelected ? .accentColor : .secondary).font(.caption)
             Text(doc.displayTitle).lineLimit(1).font(.callout)
-            Button(action: { store.closeDocument(doc) }) {
-                Image(systemName: "xmark").font(.caption2)
-            }.buttonStyle(.plain).help("Close tab (⌘W)")
+            closeButton
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), lineWidth: 1))
         .cornerRadius(7)
         .frame(maxWidth: 200)
+    }
+
+    /// The "xmark" glyph at .caption2 is only ~8pt square, which makes it a
+    /// fiddly target. Pad it out to a full 18x18 rectangle and use
+    /// .contentShape(Rectangle()) so the *entire* rectangle is hit-testable,
+    /// not just the drawn glyph. The glyph stays small; only the target grows.
+    /// 18pt matches the chip's text line height, so the tab bar grows ~1pt.
+    private var closeButton: some View {
+        Button(action: { store.closeDocument(doc) }) {
+            Image(systemName: "xmark")
+                .font(.caption2)
+                .foregroundStyle(hoveringClose ? .primary : .secondary)
+                .frame(width: 18, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(hoveringClose ? Color.primary.opacity(0.12) : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveringClose = $0 }
+        .help("Close tab (⌘W)")
     }
 }
 

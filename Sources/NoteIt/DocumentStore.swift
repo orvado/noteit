@@ -16,6 +16,9 @@ final class DocumentStore: ObservableObject {
     var textViews: [UUID: NSTextView] = [:]
     private var autosaveTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    /// Live snippet-placeholder navigation session, if any.
+    /// See "Snippet placeholders" below.
+    private var placeholderSession: PlaceholderSession?
 
     var selectedDocument: EditorDocument? {
         guard let id = selectedID else { return documents.first }
@@ -66,12 +69,17 @@ final class DocumentStore: ObservableObject {
         }
         textViews.removeValue(forKey: doc.id)
         documents.removeAll { $0.id == doc.id }
+        if placeholderSession?.docID == doc.id { placeholderSession = nil }
         if documents.isEmpty { newDocument() }
         if selectedID == doc.id { selectedID = documents.last?.id }
         pruneStaleDrafts()
     }
 
-    func select(_ doc: EditorDocument) { selectedID = doc.id }
+    func select(_ doc: EditorDocument) {
+        selectedID = doc.id
+        // A placeholder session belongs to the document it started in.
+        if let s = placeholderSession, s.docID != doc.id { placeholderSession = nil }
+    }
 
     // MARK: - File IO
     func open() {
@@ -448,6 +456,11 @@ final class DocumentStore: ObservableObject {
         tv.shouldChangeText(in: sel, replacementString: expansion)
         tv.replaceCharacters(in: sel, with: expansion)
         tv.didChangeText()
+        // Select the first <#...#> so the user can type straight over it.
+        startPlaceholderSession(docID: doc.id,
+                                inserted: NSRange(location: sel.location,
+                                                  length: (expansion as NSString).length),
+                                in: tv)
         syncFromTextView(tv, to: doc)
         tv.window?.makeFirstResponder(tv)
     }
@@ -464,12 +477,142 @@ final class DocumentStore: ObservableObject {
         guard !word.isEmpty,
               let snip = snippets.first(where: { $0.trigger == word }) else { return false }
         let range = NSRange(location: upto - (word as NSString).length, length: (word as NSString).length)
-        tv.shouldChangeText(in: range, replacementString: snip.resolvedExpansion())
-        tv.replaceCharacters(in: range, with: snip.resolvedExpansion())
+        let expansion = snip.resolvedExpansion()
+        tv.shouldChangeText(in: range, replacementString: expansion)
+        tv.replaceCharacters(in: range, with: expansion)
         tv.didChangeText()
         if let doc = documents.first(where: { textViews[$0.id] === tv }) {
+            startPlaceholderSession(docID: doc.id,
+                                    inserted: NSRange(location: range.location,
+                                                      length: (expansion as NSString).length),
+                                    in: tv)
             syncFromTextView(tv, to: doc)
         }
+        return true
+    }
+
+    // MARK: - Snippet placeholders
+
+    /// A live placeholder-navigation session covering the text one snippet
+    /// inserted.
+    ///
+    /// Scoped to the inserted range rather than the whole document on purpose:
+    /// tokens are deliberately left in the text (never stripped), so a
+    /// document-wide search would keep hijacking Tab for indentation forever
+    /// in any file that still contains a stale `<#...#>`.
+    private struct PlaceholderSession {
+        let docID: UUID
+        /// The inserted range, as it was at insertion time.
+        let range: NSRange
+        /// Document length at insertion time; used to grow the range when the
+        /// user types a replacement longer than the token it replaced.
+        let baseLength: Int
+    }
+
+    private static let tokenOpen = "<#"
+    private static let tokenClose = "#>"
+
+    /// All literal `<#...#>` tokens inside `range`. Re-scanned on every Tab
+    /// rather than cached, so the list stays correct after the user types over
+    /// a token (which removes it) or edits around them.
+    private func placeholderRanges(in text: NSString, within range: NSRange) -> [NSRange] {
+        var result: [NSRange] = []
+        var search = range
+        while search.length > 0 {
+            let open = text.range(of: Self.tokenOpen, options: [], range: search)
+            if open.location == NSNotFound { break }
+            let rest = NSRange(location: open.upperBound,
+                               length: max(0, search.upperBound - open.upperBound))
+            let close = text.range(of: Self.tokenClose, options: [], range: rest)
+            if close.location == NSNotFound { break }
+            result.append(NSRange(location: open.location,
+                                  length: close.upperBound - open.location))
+            let next = close.upperBound
+            search = NSRange(location: next, length: max(0, search.upperBound - next))
+        }
+        return result
+    }
+
+    /// Begins a session over `inserted` and selects its first token.
+    /// Snippets with no tokens simply start no session.
+    private func startPlaceholderSession(docID: UUID, inserted: NSRange, in tv: NSTextView) {
+        let ns = tv.string as NSString
+        let clamped = NSIntersectionRange(inserted, NSRange(location: 0, length: ns.length))
+        guard let first = placeholderRanges(in: ns, within: clamped).first else {
+            placeholderSession = nil
+            return
+        }
+        placeholderSession = PlaceholderSession(docID: docID, range: clamped, baseLength: ns.length)
+        tv.setSelectedRange(first)
+        tv.scrollRangeToVisible(first)
+    }
+
+    /// Moves the selection to the next (`backwards == false`) or previous
+    /// token in the active session.
+    ///
+    /// Returns true when it moved, meaning the key press is consumed. Returns
+    /// false — and ends the session — when there is no further token, so Tab
+    /// falls through to its normal behaviour (indent).
+    @discardableResult
+    func navigatePlaceholder(in tv: NSTextView, backwards: Bool) -> Bool {
+        guard let session = placeholderSession,
+              let doc = documents.first(where: { textViews[$0.id] === tv }),
+              doc.id == session.docID else { return false }
+
+        let ns = tv.string as NSString
+        // Grow the tail by however much the document has grown since insertion,
+        // so a long replacement doesn't push the final token out of range.
+        let growth = max(0, ns.length - session.baseLength)
+        let start = min(session.range.location, ns.length)
+        let end = min(ns.length, session.range.upperBound + growth)
+        let tokens = placeholderRanges(in: ns,
+                                       within: NSRange(location: start, length: max(0, end - start)))
+
+        let caret = tv.selectedRange()
+        let target: NSRange? = {
+            if backwards {
+                return tokens.reversed().first { $0.upperBound <= caret.location }
+            }
+            guard let i = tokens.firstIndex(where: { $0.location >= caret.location }) else { return nil }
+            // Sitting exactly on a token means "advance past it", not "re-select".
+            // On the LAST token there is nothing to advance to, so return nil:
+            // that ends the session and lets Tab fall through to a real indent
+            // instead of trapping the caret on the final token forever.
+            if NSEqualRanges(tokens[i], caret) {
+                let next = tokens.index(after: i)
+                return next < tokens.count ? tokens[next] : nil
+            }
+            return tokens[i]
+        }()
+
+        guard let t = target else {
+            // Ran out of tokens: end the session so the key falls through to
+            // its normal behaviour. Collapse the selection first (trailing edge
+            // going forward, leading edge going back) so the fall-through Tab
+            // indents *beside* the token instead of replacing it — the token
+            // was selected automatically, so silently eating it would strip
+            // text the user never chose to remove.
+            if caret.length > 0 {
+                let edge = backwards ? caret.location : caret.upperBound
+                let collapsed = NSRange(location: edge, length: 0)
+                tv.setSelectedRange(collapsed)
+                tv.scrollRangeToVisible(collapsed)
+                syncFromTextView(tv, to: doc)
+            }
+            placeholderSession = nil
+            return false
+        }
+        tv.setSelectedRange(t)
+        tv.scrollRangeToVisible(t)
+        syncFromTextView(tv, to: doc)
+        return true
+    }
+
+    /// Ends the active session (Esc). Returns true if one was active.
+    @discardableResult
+    func endPlaceholderSession() -> Bool {
+        guard placeholderSession != nil else { return false }
+        placeholderSession = nil
         return true
     }
 

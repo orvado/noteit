@@ -257,6 +257,11 @@ final class NoteTextView: NSTextView {
     var onTextChange: ((String) -> Void)?
     var onSelectionChange: ((Int, Int) -> Void)?
     var expandTrigger: (() -> Bool)?
+    /// `backwards` is Shift-Tab. Returns false when there is no token to move
+    /// to, so the key press falls through to Tab's normal behaviour (indent).
+    var navigatePlaceholder: ((Bool) -> Bool)?
+    /// Esc abandons an active placeholder session; false when none was active.
+    var endPlaceholderSession: (() -> Bool)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -284,7 +289,14 @@ final class NoteTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 48 { // Tab
-            if expandTrigger?() == true { return }
+            let backwards = event.modifierFlags.contains(.shift)
+            // Forward Tab tries trigger expansion first — it bails out on a
+            // non-empty selection, so a selected token is never re-expanded.
+            // Shift-Tab is purely placeholder navigation.
+            if !backwards, expandTrigger?() == true { return }
+            if navigatePlaceholder?(backwards) == true { return }
+        } else if event.keyCode == 53 { // Esc
+            if endPlaceholderSession?() == true { return }
         }
         super.keyDown(with: event)
     }
@@ -381,6 +393,11 @@ struct EditorView: NSViewRepresentable {
             guard let tv = textView else { return false }
             return store.expandTriggerIfNeeded(in: tv)
         }
+        textView.navigatePlaceholder = { [weak textView] backwards in
+            guard let tv = textView else { return false }
+            return store.navigatePlaceholder(in: tv, backwards: backwards)
+        }
+        textView.endPlaceholderSession = { store.endPlaceholderSession() }
 
         if container.showsLineNumbers != store.settings.showLineNumbers {
             container.showsLineNumbers = store.settings.showLineNumbers

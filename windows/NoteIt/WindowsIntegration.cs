@@ -173,16 +173,25 @@ public sealed class WindowsIntegration : IDisposable
     public static bool EnsureSingleInstance()
     {
         _singleInstanceMutex = new Mutex(true, "NoteIt_SingleInstance_Mutex", out bool createdNew);
-        if (!createdNew)
-        {
-            // Another instance is running; activate it and exit
-            ActivateExistingInstance();
+        if (createdNew)
+            return true;
+
+        if (ActivateExistingInstance())
             return false;
+
+        // A stale NoteIt process can exist without a window handle (tray-only / crashed instance).
+        // In that case, allow a fresh launch instead of silently exiting.
+        try
+        {
+            _singleInstanceMutex.ReleaseMutex();
         }
-        return true;
+        catch { }
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = new Mutex(true, "NoteIt_SingleInstance_Mutex", out createdNew);
+        return createdNew;
     }
 
-    private static void ActivateExistingInstance()
+    private static bool ActivateExistingInstance()
     {
         try
         {
@@ -194,11 +203,19 @@ public sealed class WindowsIntegration : IDisposable
                     // Restore if minimized
                     ShowWindow(p.MainWindowHandle, SW_RESTORE);
                     SetForegroundWindow(p.MainWindowHandle);
-                    break;
+                    return true;
                 }
+            }
+
+            // No visible window exists; clean up stale tray-only processes.
+            foreach (var p in processes)
+            {
+                try { p.Kill(entireProcessTree: true); }
+                catch { }
             }
         }
         catch { }
+        return false;
     }
 
     private const int SW_RESTORE = 9;

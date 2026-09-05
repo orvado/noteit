@@ -36,9 +36,168 @@
       <Setter Property="FontFamily" Value="Segoe UI"/>
     </Style>
 
-    <!-- MenuItem: custom template so the dropdown popup uses our themed brushes.
+    <!-- MenuItem: custom templates so dropdown popups use our themed brushes.
          WPF's default MenuItem template hardcodes a light-gray popup background
-         which makes dark-mode menus unreadable. This template replaces it. -->
+         which makes dark-mode menus unreadable. One template per Role; the style
+         below picks the template via Style.Triggers because WPF forbids setting
+         the Template property from inside an element's own ControlTemplate. -->
+    <ControlTemplate x:Key="NoteItMenuItemTopLevelHeaderTemplate" TargetType="MenuItem">
+      <Border x:Name="root"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              Padding="{TemplateBinding Padding}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <ContentPresenter Grid.Column="0"
+                            ContentSource="Header"
+                            RecognizesAccessKey="True"
+                            VerticalAlignment="Center"/>
+          <Popup x:Name="PART_Popup"
+                 Grid.Column="0"
+                 AllowsTransparency="True"
+                 IsOpen="{TemplateBinding IsSubmenuOpen}"
+                 Placement="Bottom"
+                 VerticalOffset="2"
+                 PopupAnimation="Fade">
+            <Border Background="{DynamicResource NoteItMenuPopupBackground}"
+                    BorderBrush="{DynamicResource NoteItMenuItemBorder}"
+                    BorderThickness="1"
+                    Padding="1"
+                    MinWidth="200">
+              <StackPanel>
+                <ItemsPresenter/>
+              </StackPanel>
+            </Border>
+          </Popup>
+        </Grid>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter TargetName="root" Property="Background"
+                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
+        </Trigger>
+        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+          <Setter TargetName="root" Property="Background"
+                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="NoteItMenuItemTopLevelItemTemplate" TargetType="MenuItem">
+      <Border x:Name="root"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              Padding="{TemplateBinding Padding}">
+        <ContentPresenter ContentSource="Header"
+                          RecognizesAccessKey="True"
+                          VerticalAlignment="Center"/>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter TargetName="root" Property="Background"
+                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="NoteItMenuItemSubmenuHeaderTemplate" TargetType="MenuItem">
+      <Border x:Name="root"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              Padding="{TemplateBinding Padding}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <ContentPresenter Grid.Column="0"
+                            ContentSource="Header"
+                            RecognizesAccessKey="True"
+                            VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1"
+                     Text="{TemplateBinding InputGestureText}"
+                     Foreground="{DynamicResource NoteItDisabledForeground}"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="20,0,0,0"/>
+          <Popup x:Name="PART_Popup"
+                 Grid.Column="0"
+                 AllowsTransparency="True"
+                 IsOpen="{TemplateBinding IsSubmenuOpen}"
+                 Placement="Right"
+                 VerticalOffset="-2"
+                 PopupAnimation="Fade">
+            <Border Background="{DynamicResource NoteItMenuPopupBackground}"
+                    BorderBrush="{DynamicResource NoteItMenuItemBorder}"
+                    BorderThickness="1"
+                    Padding="1"
+                    MinWidth="200">
+              <StackPanel>
+                <ItemsPresenter/>
+              </StackPanel>
+            </Border>
+          </Popup>
+        </Grid>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter TargetName="root" Property="Background"
+                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
+          <Setter Property="Foreground"
+                  Value="{DynamicResource NoteItMenuItemHoverForeground}"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground"
+                  Value="{DynamicResource NoteItDisabledForeground}"/>
+          <Setter TargetName="root" Property="Opacity" Value="0.5"/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <ControlTemplate x:Key="NoteItMenuItemSubmenuItemTemplate" TargetType="MenuItem">
+      <Border x:Name="root"
+              Background="{TemplateBinding Background}"
+              BorderBrush="{TemplateBinding BorderBrush}"
+              BorderThickness="{TemplateBinding BorderThickness}"
+              Padding="{TemplateBinding Padding}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <ContentPresenter Grid.Column="0"
+                            ContentSource="Header"
+                            RecognizesAccessKey="True"
+                            VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1"
+                     Text="{TemplateBinding InputGestureText}"
+                     Foreground="{DynamicResource NoteItDisabledForeground}"
+                     FontSize="11"
+                     VerticalAlignment="Center"
+                     Margin="20,0,0,0"/>
+        </Grid>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter TargetName="root" Property="Background"
+                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
+          <Setter Property="Foreground"
+                  Value="{DynamicResource NoteItMenuItemHoverForeground}"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground"
+                  Value="{DynamicResource NoteItDisabledForeground}"/>
+          <Setter TargetName="root" Property="Opacity" Value="0.5"/>
+        </Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate>
+
     <Style TargetType="MenuItem">
       <Setter Property="FontFamily" Value="Segoe UI"/>
       <Setter Property="FontSize" Value="13"/>
@@ -46,207 +205,17 @@
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Padding" Value="8,3,8,3"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="MenuItem">
-            <!-- The top-level menu item (File, Edit, View, etc.) -->
-            <Border x:Name="templateRoot"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    Padding="{TemplateBinding Padding}">
-              <ContentPresenter ContentSource="Header"
-                                RecognizesAccessKey="True"
-                                VerticalAlignment="Center"
-                                HorizontalAlignment="Left"/>
-            </Border>
-            <ControlTemplate.Triggers>
-              <!-- When this is a top-level item (parent is a Menu), show as a button -->
-              <Trigger Property="Role" Value="TopLevelHeader">
-                <Setter Property="Template">
-                  <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                      <Border x:Name="root"
-                              Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              Padding="{TemplateBinding Padding}">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                          </Grid.ColumnDefinitions>
-                          <ContentPresenter Grid.Column="0"
-                                            ContentSource="Header"
-                                            RecognizesAccessKey="True"
-                                            VerticalAlignment="Center"/>
-                          <Popup x:Name="PART_Popup"
-                                 Grid.Column="0"
-                                 AllowsTransparency="True"
-                                 IsOpen="{TemplateBinding IsSubmenuOpen}"
-                                 Placement="Bottom"
-                                 VerticalOffset="2"
-                                 PopupAnimation="Fade">
-                            <Border Background="{DynamicResource NoteItMenuPopupBackground}"
-                                    BorderBrush="{DynamicResource NoteItMenuItemBorder}"
-                                    BorderThickness="1"
-                                    Padding="1"
-                                    MinWidth="200">
-                              <StackPanel>
-                                <ItemsPresenter/>
-                              </StackPanel>
-                            </Border>
-                          </Popup>
-                        </Grid>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter TargetName="root" Property="Background"
-                                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
-                        </Trigger>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                          <Setter TargetName="root" Property="Background"
-                                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Setter.Value>
-                </Setter>
-              </Trigger>
-              <!-- Submenu item (inside the dropdown) -->
-              <Trigger Property="Role" Value="SubmenuHeader">
-                <Setter Property="Template">
-                  <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                      <Border x:Name="root"
-                              Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              Padding="{TemplateBinding Padding}">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                          </Grid.ColumnDefinitions>
-                          <ContentPresenter Grid.Column="0"
-                                            ContentSource="Header"
-                                            RecognizesAccessKey="True"
-                                            VerticalAlignment="Center"/>
-                          <TextBlock Grid.Column="1"
-                                     Text="{TemplateBinding InputGestureText}"
-                                     Foreground="{DynamicResource NoteItDisabledForeground}"
-                                     FontSize="11"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0"/>
-                          <Popup x:Name="PART_Popup"
-                                 Grid.Column="0"
-                                 AllowsTransparency="True"
-                                 IsOpen="{TemplateBinding IsSubmenuOpen}"
-                                 Placement="Right"
-                                 VerticalOffset="-2"
-                                 PopupAnimation="Fade">
-                            <Border Background="{DynamicResource NoteItMenuPopupBackground}"
-                                    BorderBrush="{DynamicResource NoteItMenuItemBorder}"
-                                    BorderThickness="1"
-                                    Padding="1"
-                                    MinWidth="200">
-                              <StackPanel>
-                                <ItemsPresenter/>
-                              </StackPanel>
-                            </Border>
-                          </Popup>
-                        </Grid>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter TargetName="root" Property="Background"
-                                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
-                          <Setter Property="Foreground"
-                                  Value="{DynamicResource NoteItMenuItemHoverForeground}"/>
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                          <Setter Property="Foreground"
-                                  Value="{DynamicResource NoteItDisabledForeground}"/>
-                          <Setter TargetName="root" Property="Opacity" Value="0.5"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Setter.Value>
-                </Setter>
-              </Trigger>
-              <!-- Submenu item without children (leaf) -->
-              <Trigger Property="Role" Value="SubmenuItem">
-                <Setter Property="Template">
-                  <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                      <Border x:Name="root"
-                              Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              Padding="{TemplateBinding Padding}">
-                        <Grid>
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                          </Grid.ColumnDefinitions>
-                          <ContentPresenter Grid.Column="0"
-                                            ContentSource="Header"
-                                            RecognizesAccessKey="True"
-                                            VerticalAlignment="Center"/>
-                          <TextBlock Grid.Column="1"
-                                     Text="{TemplateBinding InputGestureText}"
-                                     Foreground="{DynamicResource NoteItDisabledForeground}"
-                                     FontSize="11"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0"/>
-                        </Grid>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter TargetName="root" Property="Background"
-                                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
-                          <Setter Property="Foreground"
-                                  Value="{DynamicResource NoteItMenuItemHoverForeground}"/>
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                          <Setter Property="Foreground"
-                                  Value="{DynamicResource NoteItDisabledForeground}"/>
-                          <Setter TargetName="root" Property="Opacity" Value="0.5"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Setter.Value>
-                </Setter>
-              </Trigger>
-              <!-- Top-level leaf (rare: top-level item with no children) -->
-              <Trigger Property="Role" Value="TopLevelItem">
-                <Setter Property="Template">
-                  <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                      <Border x:Name="root"
-                              Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              Padding="{TemplateBinding Padding}">
-                        <ContentPresenter ContentSource="Header"
-                                          RecognizesAccessKey="True"
-                                          VerticalAlignment="Center"/>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter TargetName="root" Property="Background"
-                                  Value="{DynamicResource NoteItMenuItemHoverBackground}"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Setter.Value>
-                </Setter>
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
+      <Setter Property="Template" Value="{StaticResource NoteItMenuItemSubmenuItemTemplate}"/>
       <Style.Triggers>
+        <Trigger Property="Role" Value="TopLevelHeader">
+          <Setter Property="Template" Value="{StaticResource NoteItMenuItemTopLevelHeaderTemplate}"/>
+        </Trigger>
+        <Trigger Property="Role" Value="TopLevelItem">
+          <Setter Property="Template" Value="{StaticResource NoteItMenuItemTopLevelItemTemplate}"/>
+        </Trigger>
+        <Trigger Property="Role" Value="SubmenuHeader">
+          <Setter Property="Template" Value="{StaticResource NoteItMenuItemSubmenuHeaderTemplate}"/>
+        </Trigger>
         <Trigger Property="IsEnabled" Value="False">
           <Setter Property="Foreground" Value="{DynamicResource NoteItDisabledForeground}"/>
         </Trigger>

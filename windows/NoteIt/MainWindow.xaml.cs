@@ -366,12 +366,22 @@ public partial class MainWindow : Window
     private void ApplySettingsToEditor()
     {
         var s = _store.Settings;
+        bool dark = s.Appearance switch
+        {
+            AppSettings.AppearanceMode.Dark => true,
+            AppSettings.AppearanceMode.Light => false,
+            _ => App.IsSystemDark(),
+        };
         try
         {
             Editor.FontFamily = new FontFamily(s.FontName);
         }
         catch { Editor.FontFamily = new FontFamily("Consolas"); }
         Editor.FontSize = s.FontSize;
+        Editor.Foreground = (SolidColorBrush)FindResource("NoteItEditorForeground");
+        Editor.Background = (SolidColorBrush)FindResource("NoteItEditorBackground");
+        Editor.CaretBrush = dark ? Brushes.White : Brushes.Black;
+        Editor.SelectionBrush = new SolidColorBrush(dark ? Color.FromArgb(120, 77, 163, 232) : Color.FromArgb(120, 0, 120, 215));
         System.Windows.Controls.SpellCheck.SetIsEnabled(Editor, s.Spellcheck);
         Editor.Document.PageWidth = s.WrapLines ? double.NaN : 10000;
         Editor.HorizontalScrollBarVisibility = s.WrapLines ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;

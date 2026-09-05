@@ -103,6 +103,13 @@ public partial class App : Application
             SetBrush("NoteItStatusBarForeground", dark ? "#999999" : "#5A5A5A");
             SetBrush("NoteItDisabledForeground", dark ? "#A1A1A1" : "#6D6D6D");
 
+            // Menu popup (dropdown) — darker than chrome for contrast
+            SetBrush("NoteItMenuPopupBackground", dark ? "#1F1F1F" : "#F6F6F6");
+            SetBrush("NoteItMenuPopupForeground", dark ? "#E0E0E0" : "#1A1A1A");
+            SetBrush("NoteItMenuItemHoverBackground", dark ? "#2F2F2F" : "#E5E5E5");
+            SetBrush("NoteItMenuItemHoverForeground", dark ? "#FFFFFF" : "#1A1A1A");
+            SetBrush("NoteItMenuItemBorder", dark ? "#3F3F3F" : "#CFCFCF");
+
             // Apply Mica backdrop to all windows
             foreach (Window w in Current.Windows)
             {
@@ -165,7 +172,7 @@ public partial class App : Application
         ApplyMicaBackdrop(window, dark);
     }
 
-    private static bool IsSystemDark()
+    public static bool IsSystemDark()
     {
         try
         {

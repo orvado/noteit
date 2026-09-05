@@ -35,7 +35,7 @@
 
           <!-- Tab bar (centered in title bar) -->
           <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Hidden"
-                        PreviewMouseLeftButtonDown="OnTitleBarMouseLeftButtonDown">
+                        PreviewMouseLeftButtonDown="OnTitleBarMouseLeftButtonDown" WindowChrome.IsHitTestVisibleInChrome="True">
             <StackPanel x:Name="TabsPanel" Orientation="Horizontal" Margin="0,0,0,0"
                         VerticalAlignment="Center"/>
           </ScrollViewer>
@@ -44,25 +44,25 @@
           <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
                       HorizontalAlignment="Right">
             <Button Content="+" Width="36" Height="28" ToolTip="New tab (Ctrl+T)"
-                    Click="OnNewTab" Style="{StaticResource TitleBarButton}"/>
+                    Click="OnNewTab" Style="{StaticResource TitleBarButton}" WindowChrome.IsHitTestVisibleInChrome="True"/>
             <!-- System caption buttons -->
             <Button x:Name="MinButton" Width="46" Height="28" Click="OnMinimize"
                     Style="{StaticResource CaptionButton}" Content="&#xE921;"
                     FontFamily="Segoe Fluent Icons" FontSize="10"
-                    ToolTip="Minimize"/>
+                    ToolTip="Minimize" WindowChrome.IsHitTestVisibleInChrome="True"/>
             <Button x:Name="MaxButton" Width="46" Height="28" Click="OnMaximizeRestore"
                     Style="{StaticResource CaptionButton}" Content="&#xE922;"
                     FontFamily="Segoe Fluent Icons" FontSize="10"
-                    ToolTip="Maximize"/>
+                    ToolTip="Maximize" WindowChrome.IsHitTestVisibleInChrome="True"/>
             <Button x:Name="RestoreButton" Width="46" Height="28" Click="OnMaximizeRestore"
                     Style="{StaticResource CaptionButton}" Content="&#xE923;"
                     FontFamily="Segoe Fluent Icons" FontSize="10"
                     Visibility="Collapsed"
-                    ToolTip="Restore"/>
+                    ToolTip="Restore" WindowChrome.IsHitTestVisibleInChrome="True"/>
             <Button x:Name="CloseButton" Width="46" Height="28" Click="OnCloseWindow"
                     Style="{StaticResource CloseCaptionButton}" Content="&#xE8BB;"
                     FontFamily="Segoe Fluent Icons" FontSize="10"
-                    ToolTip="Close"/>
+                    ToolTip="Close" WindowChrome.IsHitTestVisibleInChrome="True"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -135,21 +135,21 @@
 
       <!-- Status bar -->
       <StatusBar DockPanel.Dock="Bottom" x:Name="StatusBar">
-        <StatusBarItem><TextBlock x:Name="CursorText" Text="Ln 1, Col 1" MinWidth="90"/></StatusBarItem>
+        <StatusBarItem><TextBlock x:Name="CursorText" Text="Ln 1, Col 1" MinWidth="90" Foreground="{DynamicResource NoteItStatusBarForeground}"/></StatusBarItem>
         <Separator/>
-        <StatusBarItem><TextBlock x:Name="WordText" Text="0 words" MinWidth="60"/></StatusBarItem>
+        <StatusBarItem><TextBlock x:Name="WordText" Text="0 words" MinWidth="60" Foreground="{DynamicResource NoteItStatusBarForeground}"/></StatusBarItem>
         <Separator/>
-        <StatusBarItem><TextBlock x:Name="LineText" Text="1 lines" MinWidth="50"/></StatusBarItem>
+        <StatusBarItem><TextBlock x:Name="LineText" Text="1 lines" MinWidth="50" Foreground="{DynamicResource NoteItStatusBarForeground}"/></StatusBarItem>
         <Separator/>
-        <StatusBarItem><TextBlock x:Name="SavedText" Text="Saved" MinWidth="60"/></StatusBarItem>
+        <StatusBarItem><TextBlock x:Name="SavedText" Text="Saved" MinWidth="60" Foreground="{DynamicResource NoteItStatusBarForeground}"/></StatusBarItem>
         <Separator/>
-        <StatusBarItem><TextBlock x:Name="FileText" Text="" MaxWidth="260" TextTrimming="CharacterEllipsis"/></StatusBarItem>
+        <StatusBarItem><TextBlock x:Name="FileText" Text="" MaxWidth="260" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource NoteItStatusBarForeground}"/></StatusBarItem>
         <StatusBarItem HorizontalAlignment="Right" HorizontalContentAlignment="Right">
           <StackPanel Orientation="Horizontal">
-            <CheckBox x:Name="WrapCheck" Content="Wrap" Margin="8,0" ToolTip="Wrap long lines (Alt+Ctrl+L)" Checked="OnWrapChecked" Unchecked="OnWrapChecked"/>
-            <CheckBox x:Name="SpellCheck" Content="Spell" Margin="8,0" ToolTip="Spellcheck (Alt+Ctrl+K)" Checked="OnSpellChecked" Unchecked="OnSpellChecked"/>
-            <CheckBox x:Name="FormatCheck" Content="Format" Margin="8,0" ToolTip="Basic formatting (bold/italic) — off by default" Checked="OnFormatChecked" Unchecked="OnFormatChecked"/>
-            <TextBlock x:Name="FontText" Margin="8,0" Foreground="Gray"/>
+            <CheckBox x:Name="WrapCheck" Content="Wrap" Margin="8,0" Foreground="{DynamicResource NoteItStatusBarForeground}" ToolTip="Wrap long lines (Alt+Ctrl+L)" Checked="OnWrapChecked" Unchecked="OnWrapChecked"/>
+            <CheckBox x:Name="SpellCheck" Content="Spell" Margin="8,0" Foreground="{DynamicResource NoteItStatusBarForeground}" ToolTip="Spellcheck (Alt+Ctrl+K)" Checked="OnSpellChecked" Unchecked="OnSpellChecked"/>
+            <CheckBox x:Name="FormatCheck" Content="Format" Margin="8,0" Foreground="{DynamicResource NoteItStatusBarForeground}" ToolTip="Basic formatting (bold/italic) — off by default" Checked="OnFormatChecked" Unchecked="OnFormatChecked"/>
+            <TextBlock x:Name="FontText" Margin="8,0" Foreground="{DynamicResource NoteItStatusBarForeground}"/>
           </StackPanel>
         </StatusBarItem>
       </StatusBar>
@@ -176,7 +176,7 @@
                         FontFamily="Segoe Fluent Icons" FontSize="10"/>
                 <Button Content="&#xE748;" ToolTip="Toggle replace (Ctrl+H)" Click="OnToggleReplaceBar" Margin="0,0,8,0"
                         FontFamily="Segoe Fluent Icons" FontSize="10"/>
-                <TextBlock x:Name="MatchCount" VerticalAlignment="Center" Foreground="Gray" MinWidth="80"/>
+                <TextBlock x:Name="MatchCount" VerticalAlignment="Center" Foreground="{DynamicResource NoteItStatusBarForeground}" MinWidth="80"/>
               </StackPanel>
             </DockPanel>
             <StackPanel x:Name="ReplaceRow" Orientation="Horizontal" Visibility="Collapsed" Margin="0,6,0,0">

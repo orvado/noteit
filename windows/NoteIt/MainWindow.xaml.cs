@@ -479,6 +479,8 @@ public partial class MainWindow : Window
                 close.Click += (_, _) => CloseTab(doc);
                 sp.Children.Add(icon); sp.Children.Add(label); sp.Children.Add(close);
                 chip.Child = sp;
+                WindowChrome.SetIsHitTestVisibleInChrome(chip, true);
+                WindowChrome.SetIsHitTestVisibleInChrome(close, true);
                 chip.MouseLeftButtonUp += (_, _) => { _store.Select(doc); LoadSelectedDocument(); };
                 TabsPanel.Children.Add(chip);
             }
@@ -499,6 +501,18 @@ public partial class MainWindow : Window
             chip.BorderBrush = isSel
                 ? (SolidColorBrush)FindResource("NoteItSeparator")
                 : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+
+            if (chip.Child is StackPanel sp && sp.Children.Count >= 3)
+            {
+                var icon = sp.Children[0] as TextBlock;
+                var label = sp.Children[1] as TextBlock;
+                var close = sp.Children[2] as Button;
+                var textBrush = (SolidColorBrush)FindResource(isSel ? "NoteItTabSelectedForeground" : "NoteItTabForeground");
+
+                if (icon != null) icon.Foreground = textBrush;
+                if (label != null) label.Foreground = textBrush;
+                if (close != null) close.Foreground = textBrush;
+            }
         }
     }
 
@@ -525,11 +539,22 @@ public partial class MainWindow : Window
     {
         var doc = _store.SelectedDocument;
         if (doc is null) return;
+
+        var statusBrush = (System.Windows.Media.Brush)FindResource("NoteItStatusBarForeground");
+        CursorText.Foreground = statusBrush;
+        WordText.Foreground = statusBrush;
+        LineText.Foreground = statusBrush;
+        FileText.Foreground = statusBrush;
+        SavedText.Foreground = doc.IsDirty ? Brushes.Orange : statusBrush;
+        WrapCheck.Foreground = statusBrush;
+        SpellCheck.Foreground = statusBrush;
+        FormatCheck.Foreground = statusBrush;
+        FontText.Foreground = statusBrush;
+
         CursorText.Text = $"Ln {doc.CursorLine}, Col {doc.CursorColumn}";
         WordText.Text = $"{doc.WordCount} words";
         LineText.Text = $"{doc.LineCount} lines";
         SavedText.Text = doc.IsDirty ? "\u25CF Unsaved" : "Saved";
-        SavedText.Foreground = doc.IsDirty ? Brushes.Orange : Brushes.Gray;
         FileText.Text = doc.FilePath is string fp ? System.IO.Path.GetFileName(fp) : "";
         FileText.ToolTip = doc.FilePath;
     }

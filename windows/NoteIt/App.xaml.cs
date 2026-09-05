@@ -101,6 +101,7 @@ public partial class App : Application
             // Status bar
             SetBrush("NoteItStatusBarBackground", dark ? "#2B2B2B" : "#F0F0F0");
             SetBrush("NoteItStatusBarForeground", dark ? "#999999" : "#5A5A5A");
+            SetBrush("NoteItDisabledForeground", dark ? "#A1A1A1" : "#6D6D6D");
 
             // Apply Mica backdrop to all windows
             foreach (Window w in Current.Windows)

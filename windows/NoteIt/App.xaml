@@ -21,6 +21,7 @@
     <SolidColorBrush x:Key="NoteItSeparator" Color="#CFCFCF"/>
     <SolidColorBrush x:Key="NoteItStatusBarBackground" Color="#F3F3F3"/>
     <SolidColorBrush x:Key="NoteItStatusBarForeground" Color="#5A5A5A"/>
+    <SolidColorBrush x:Key="NoteItDisabledForeground" Color="#6D6D6D"/>
 
     <!-- Default control styles to match Windows 11 -->
     <Style TargetType="Menu">
@@ -32,6 +33,12 @@
     <Style TargetType="MenuItem">
       <Setter Property="FontFamily" Value="Segoe UI"/>
       <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Foreground" Value="{DynamicResource NoteItChromeForeground}"/>
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="{DynamicResource NoteItDisabledForeground}"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style TargetType="StatusBar">
       <Setter Property="Background" Value="{DynamicResource NoteItStatusBarBackground}"/>

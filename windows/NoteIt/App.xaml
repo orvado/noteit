@@ -1,0 +1,120 @@
+<Application x:Class="NoteIt.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Startup="OnStartup">
+  <Application.Resources>
+    <!-- Shared brushes flipped by App.ApplyTheme -->
+    <SolidColorBrush x:Key="NoteItEditorBackground" Color="White"/>
+    <SolidColorBrush x:Key="NoteItEditorForeground" Color="Black"/>
+    <SolidColorBrush x:Key="NoteItChromeBackground" Color="#F3F3F3"/>
+    <SolidColorBrush x:Key="NoteItChromeForeground" Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="NoteItGutterBackground" Color="#F7F7F7"/>
+    <SolidColorBrush x:Key="NoteItGutterForeground" Color="#808080"/>
+    <SolidColorBrush x:Key="NoteItTabBackground" Color="#E8E8E8"/>
+    <SolidColorBrush x:Key="NoteItTabForeground" Color="#3B3B3B"/>
+    <SolidColorBrush x:Key="NoteItTabSelectedBackground" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="NoteItTabSelectedForeground" Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="NoteItTabHoverBackground" Color="#D9D9D9"/>
+    <SolidColorBrush x:Key="NoteItTitleBarBackground" Color="#E8E8E8"/>
+    <SolidColorBrush x:Key="NoteItTitleBarForeground" Color="#1A1A1A"/>
+    <SolidColorBrush x:Key="NoteItAccent" Color="#0078D7"/>
+    <SolidColorBrush x:Key="NoteItSeparator" Color="#CFCFCF"/>
+    <SolidColorBrush x:Key="NoteItStatusBarBackground" Color="#F3F3F3"/>
+    <SolidColorBrush x:Key="NoteItStatusBarForeground" Color="#5A5A5A"/>
+
+    <!-- Default control styles to match Windows 11 -->
+    <Style TargetType="Menu">
+      <Setter Property="Background" Value="{DynamicResource NoteItChromeBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NoteItChromeForeground}"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+    </Style>
+    <Style TargetType="MenuItem">
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style TargetType="StatusBar">
+      <Setter Property="Background" Value="{DynamicResource NoteItStatusBarBackground}"/>
+      <Setter Property="Foreground" Value="{DynamicResource NoteItStatusBarForeground}"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style TargetType="ToolBar">
+      <Setter Property="Background" Value="{DynamicResource NoteItChromeBackground}"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+
+    <!-- Caption button style (min/max/close) -->
+    <Style x:Key="CaptionButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource NoteItTitleBarForeground}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NoteItTabHoverBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NoteItSeparator}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Close caption button (red on hover) -->
+    <Style x:Key="CloseCaptionButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="#F1707A"/>
+                <Setter Property="Foreground" Value="White"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Title bar button (e.g. new tab "+") -->
+    <Style x:Key="TitleBarButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource NoteItTitleBarForeground}"/>
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="8,2">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NoteItTabHoverBackground}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource NoteItSeparator}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Application.Resources>
+</Application>

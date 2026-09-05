@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>NoteIt</AssemblyName>
+    <RootNamespace>NoteIt</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>NoteIt</Authors>
+    <Description>NoteIt — lightweight native Windows text editor (WPF port of the macOS app).</Description>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+</Project>

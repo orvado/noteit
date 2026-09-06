@@ -53,6 +53,16 @@ final class DocumentStore: ObservableObject {
         return documents.first(where: { $0.id == id }) ?? documents.first
     }
 
+    /// The theme id actually in effect: the user's choice, or — when a theme
+    /// was never picked manually — an appearance-matched default (Paper for
+    /// light, Monokai for dark). Uses the app's effective appearance, which
+    /// follows the system unless overridden in Settings.
+    var effectiveHighlightThemeID: String {
+        if let id = settings.highlightTheme { return id }
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return dark ? HighlightThemeCatalog.monokai.id : HighlightThemeCatalog.paper.id
+    }
+
     private var settingsKey: String { "NoteIt.settings.v1" }
     private var snippetsKey: String { "NoteIt.snippets.v1" }
     private var recentsKey: String { "NoteIt.recents.v1" }

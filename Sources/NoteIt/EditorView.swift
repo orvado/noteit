@@ -388,8 +388,9 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.textView = textView
         // Theme/language changes re-render SwiftUI, landing here — compare
         // against what's applied and re-highlight when they differ. Text
-        // edits go through the storage delegate instead.
-        context.coordinator.noteAppearance(theme: store.settings.highlightTheme)
+        // edits go through the storage delegate instead. The effective id
+        // covers the appearance-matched default when no theme was picked.
+        context.coordinator.noteAppearance(theme: store.effectiveHighlightThemeID)
         // Preview promotion flips editability.
         if textView.isEditable == document.isPreview {
             textView.isEditable = !document.isPreview

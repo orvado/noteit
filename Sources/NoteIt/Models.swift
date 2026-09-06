@@ -116,8 +116,10 @@ struct AppSettings: Codable {
     var autoSaveInterval: Double = 5
     var appearance: Appearance = .system
     var tabWidth: Int = 4
-    /// Syntax theme id — "none" disables highlighting (HighlightThemeCatalog).
-    var highlightTheme: String = HighlightThemeCatalog.noneID
+    /// Syntax theme id (HighlightThemeCatalog); "none" disables highlighting.
+    /// nil = never chosen manually → default by appearance: Paper in light,
+    /// Monokai in dark (see DocumentStore.effectiveHighlightThemeID).
+    var highlightTheme: String?
 
     enum Appearance: String, Codable, CaseIterable {
         case system, light, dark
@@ -143,7 +145,7 @@ struct AppSettings: Codable {
         autoSaveInterval = try c.decodeIfPresent(Double.self, forKey: .autoSaveInterval) ?? 5
         appearance = try c.decodeIfPresent(Appearance.self, forKey: .appearance) ?? .system
         tabWidth = try c.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
-        highlightTheme = try c.decodeIfPresent(String.self, forKey: .highlightTheme) ?? HighlightThemeCatalog.noneID
+        highlightTheme = try c.decodeIfPresent(String.self, forKey: .highlightTheme)
     }
 }
 

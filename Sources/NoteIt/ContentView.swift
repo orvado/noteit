@@ -13,13 +13,16 @@ struct ContentView: View {
     @State private var showHelp = false
     /// Collapsible workspace pane; persisted so relaunches keep the choice.
     @AppStorage("NoteIt.explorerVisible") private var showExplorer = true
+    /// Explorer pane width, drag-resizable and persisted.
+    @AppStorage("NoteIt.explorerWidth") private var explorerWidth = 232.0
+    @State private var dragStartWidth: Double?
 
     var body: some View {
         HStack(spacing: 0) {
             if showExplorer {
                 WorkspaceExplorer(store: store, workspace: store.workspace)
-                    .frame(width: 232)
-                Divider()
+                    .frame(width: explorerWidth)
+                resizeHandle
             }
             VStack(spacing: 0) {
                 tabBar

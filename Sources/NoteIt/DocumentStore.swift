@@ -3,6 +3,22 @@ import AppKit
 import SwiftUI
 import Combine
 
+// MARK: - Session restore
+
+/// One tab in the persisted session: either a file on disk or an auto-saved
+/// untitled draft.
+struct SessionEntry: Codable {
+    var filePath: String?
+    var draftFile: String?
+}
+
+/// The tab session persisted across launches: which tabs were open (in
+/// order) and which one was selected.
+struct SessionState: Codable {
+    var entries: [SessionEntry] = []
+    var selectedIndex: Int = 0
+}
+
 @MainActor
 final class DocumentStore: ObservableObject {
     @Published var documents: [EditorDocument] = []
@@ -37,17 +53,27 @@ final class DocumentStore: ObservableObject {
     private var recentsKey: String { "NoteIt.recents.v1" }
     private var enabledLangsKey: String { "NoteIt.enabledLangs.v1" }
     private var langPacksKey: String { "NoteIt.langPacks.v1" }
+    private var sessionKey: String { "NoteIt.session.v1" }
 
     init() {
         loadPersistedState()
         if documents.isEmpty { newDocument() }
-        startAutosave()
-        // Persist settings/snippets/recents/packs on change
+        saveSession()   // converge the session after a possible fresh start
+        startAutosave()        // Persist settings/snippets/recents/packs/session on change
         $settings.sink { [weak self] s in self?.saveSettings(s) }.store(in: &cancellables)
         $snippets.sink { [weak self] s in self?.saveSnippets(s) }.store(in: &cancellables)
         $recentFiles.sink { [weak self] r in self?.saveRecents(r) }.store(in: &cancellables)
         $enabledLanguages.sink { [weak self] l in self?.saveEnabledLanguages(l) }.store(in: &cancellables)
         $languagePackSnippets.sink { [weak self] p in self?.saveLanguagePacks(p) }.store(in: &cancellables)
+        // Session: save whenever the tab list or selection changes.
+        // @Published publishers emit in willSet phase — reading self inside
+        // a sink would see the pre-change state — so combine the *emitted*
+        // values instead. dropFirst skips the initial current-value replay.
+        $documents
+            .combineLatest($selectedID)
+            .dropFirst()
+            .sink { [weak self] docs, id in self?.saveSession(documents: docs, selectedID: id) }
+            .store(in: &cancellables)
     }
 
     // MARK: - Tabs
@@ -270,45 +296,91 @@ final class DocumentStore: ObservableObject {
         for lang in enabledLanguages where languagePackSnippets[lang.rawValue] == nil {
             languagePackSnippets[lang.rawValue] = lang.builtInSnippets
         }
-        // Restore autosaved drafts (and delete files as we go so we don't
-        // re-restore the same drafts on the *next* launch — previous bug
-        // used a fresh UUID per doc, leaking 256 files).
-        if let dir = autosaveDir(),
-           let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
-            // Restore in mtime order so tab order is stable, cap to 20 so a
-            // corrupted dir can't spawn hundreds of tabs.
-            let sorted = files.filter { $0.pathExtension == "txt" }.sorted {
-                let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                return a < b
-            }.prefix(20)
-            for f in sorted {
-                if let s = try? String(contentsOf: f, encoding: .utf8),
-                   !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   let idStr = Optional(f.deletingPathExtension().lastPathComponent),
-                   let uuid = UUID(uuidString: idStr) {
-                    let doc = EditorDocument(text: s)
-                    // Preserve the draft's ID so future autosaves overwrite
-                    // the same file instead of leaking a new one each launch.
-                    // EditorDocument.id is let; store draft -> doc mapping via
-                    // renaming file to new doc's ID.
-                    documents.append(doc)
-                    doc.isDirty = true
-                    // Rename old draft file to new doc's file so prune/cleanup works.
-                    try? FileManager.default.moveItem(at: f, to: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
-                    // Keep uuid for reference if needed (no-op).
-                    _ = uuid
-                } else {
-                    // Empty/corrupt draft — just delete it.
-                    try? FileManager.default.removeItem(at: f)
+        // Restore the tab session (open tabs + which one was selected).
+        // Falls back to the legacy draft-only restore on the first launch
+        // after upgrading (no session saved yet).
+        if let d = ud.data(forKey: sessionKey),
+           let session = try? JSONDecoder().decode(SessionState.self, from: d),
+           !session.entries.isEmpty {
+            restoreSession(session)
+        } else {
+            restoreDraftsByMtime()
+        }
+    }
+
+    /// Rebuilds the tab bar from the persisted session: file-backed tabs
+    /// reopen from disk, untitled tabs return from their auto-save drafts,
+    /// and the previously selected tab is selected again. Missing files and
+    /// empty drafts are dropped.
+    private func restoreSession(_ session: SessionState) {
+        guard let dir = autosaveDir() else { return }
+        var restored: [EditorDocument] = []
+        for entry in session.entries {
+            if let path = entry.filePath {
+                let url = URL(fileURLWithPath: path)
+                guard FileManager.default.fileExists(atPath: path),
+                      let s = try? String(contentsOf: url, encoding: .utf8) else { continue }
+                restored.append(EditorDocument(text: s, fileURL: url))
+            } else if let draft = entry.draftFile {
+                let src = dir.appendingPathComponent(draft)
+                guard let s = try? String(contentsOf: src, encoding: .utf8),
+                      !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    try? FileManager.default.removeItem(at: src)   // empty/corrupt draft
+                    continue
                 }
+                let doc = EditorDocument(text: s)
+                restored.append(doc)
+                doc.isDirty = true
+                // Rename the draft to the new doc's id so autosave reuses the
+                // same file and pruneStaleDrafts keeps owning it.
+                try? FileManager.default.moveItem(at: src, to: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
             }
-            // Any remaining txt files beyond the cap are stale leaks — delete.
-            let remaining = files.filter { $0.pathExtension == "txt" }
-            for f in remaining where !sorted.contains(f) {
+        }
+        documents = restored
+        // The index shifts when entries were dropped; clamp to what exists.
+        selectedID = restored.indices.contains(session.selectedIndex)
+            ? restored[session.selectedIndex].id
+            : restored.first?.id
+        // The draft renames above changed names on disk — rewrite the
+        // session so the *next* launch finds the new file names.
+        saveSession()
+        pruneStaleDrafts()
+    }
+
+    /// Legacy restore (no saved session yet): untitled drafts, oldest first.
+    private func restoreDraftsByMtime() {
+        guard let dir = autosaveDir(),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        // Restore in mtime order so tab order is stable, cap to 20 so a
+        // corrupted dir can't spawn hundreds of tabs.
+        let sorted = files.filter { $0.pathExtension == "txt" }.sorted {
+            let a = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let b = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return a < b
+        }.prefix(20)
+        for f in sorted {
+            if let s = try? String(contentsOf: f, encoding: .utf8),
+               !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let doc = EditorDocument(text: s)
+                documents.append(doc)
+                doc.isDirty = true
+                // Rename old draft file to the new doc's file so prune/cleanup
+                // works and the next autosave overwrites the same file.
+                try? FileManager.default.moveItem(at: f, to: dir.appendingPathComponent("\(doc.id.uuidString).txt"))
+            } else {
+                // Empty/corrupt draft — just delete it.
                 try? FileManager.default.removeItem(at: f)
             }
         }
+        // Any remaining txt files beyond the cap are stale leaks — delete.
+        let remaining = files.filter { $0.pathExtension == "txt" }
+        for f in remaining where !sorted.contains(f) {
+            try? FileManager.default.removeItem(at: f)
+        }
+        // The restored tab used to display only through selectedDocument's
+        // first-tab fallback while selectedID stayed nil — so no tab was
+        // highlighted at launch. Select one for real.
+        if selectedID == nil { selectedID = documents.first?.id }
     }
 
     private func saveSettings(_ s: AppSettings) {
@@ -327,6 +399,23 @@ final class DocumentStore: ObservableObject {
 
     private func saveLanguagePacks(_ packs: [String: [TextSnippet]]) {
         if let d = try? JSONEncoder().encode(packs) { UserDefaults.standard.set(d, forKey: langPacksKey) }
+    }
+
+    /// Persists the open tabs (in order) and which one is selected, so the
+    /// next launch restores the session exactly. Untitled tabs are identified
+    /// by their draft file name — deterministic (`<doc-id>.txt`) even before
+    /// the first auto-save writes it.
+    private func saveSession(documents: [EditorDocument]? = nil, selectedID: UUID? = nil) {
+        let docs = documents ?? self.documents
+        let sel = selectedID ?? self.selectedID
+        let entries = docs.map { doc -> SessionEntry in
+            if let path = doc.fileURL?.path { return SessionEntry(filePath: path, draftFile: nil) }
+            return SessionEntry(filePath: nil, draftFile: "\(doc.id.uuidString).txt")
+        }
+        let index = docs.firstIndex(where: { $0.id == sel }) ?? 0
+        if let d = try? JSONEncoder().encode(SessionState(entries: entries, selectedIndex: index)) {
+            UserDefaults.standard.set(d, forKey: sessionKey)
+        }
     }
 
     // MARK: - Find / Replace engine

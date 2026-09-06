@@ -6,6 +6,7 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 
 - **New / Open / Save / Save As** (`⌘N` `⌘T` `⌘O` `⌘S` `⇧⌘S`), Save All (`⌥⌘S`), Revert, Close (`⌘W`)
 - **Auto-save** (default 5s, toggle + interval in Settings; untitled drafts kept in `~/Library/Application Support/NoteIt/Autosave`)
+- **Session restore**: relaunch reopens your tabs — files from disk, untitled tabs from drafts — with the last-selected tab selected
 - **Sophisticated search & replace**: case-sensitive, regex (`.*`), whole-word, wrap-around, live match count, highlight-all, Replace / Replace All
 - **Spellcheck** toggle (`⌥⌘K`, status bar “Spell”)
 - **Word wrap** toggle (`⌥⌘L`, status bar “Wrap”), horizontal scroll when off

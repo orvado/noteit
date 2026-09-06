@@ -172,6 +172,7 @@ let helpTopics: [HelpTopic] = [
                 "Untitled tabs are stored as drafts in ~/Library/Application Support/NoteIt/Autosave and reopened as tabs the next time you launch NoteIt.",
                 "Closing an untitled tab asks Save / Don’t Save / Cancel — “Don’t Save” removes its draft for good.",
             ]),
+            .text("The whole tab session is restored on launch: opened files reopen from disk, untitled tabs come back from their drafts, and the tab you had selected is selected again. Tabs whose file has vanished are skipped."),
         ]
     ),
     HelpTopic(

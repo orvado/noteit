@@ -59,7 +59,10 @@ final class DocumentStore: ObservableObject {
     /// follows the system unless overridden in Settings.
     var effectiveHighlightThemeID: String {
         if let id = settings.highlightTheme { return id }
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // NSApplication.shared (not the NSApp global) — the latter can be nil
+        // in non-GUI processes such as tests.
+        let dark = NSApplication.shared.effectiveAppearance
+            .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         return dark ? HighlightThemeCatalog.monokai.id : HighlightThemeCatalog.paper.id
     }
 

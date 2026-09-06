@@ -116,7 +116,7 @@ let helpTopics: [HelpTopic] = [
             .steps([
                 "Choose File ▸ Open Folder… (⌥⌘O) and pick a folder.",
                 "Browse the tree — folders expand on click, files are listed alphabetically (folders first, hidden files skipped).",
-                "Collapse or show the pane with the toolbar button or View ▸ Toggle File Explorer (⌘\\).",
+                "Collapse or show the pane with the toolbar button or View ▸ Toggle File Explorer (⌘\\); drag the pane’s right edge to resize it.",
                 "File ▸ Close Workspace clears the pane.",
             ]),
             .text("Files open two ways:"),
@@ -190,6 +190,7 @@ let helpTopics: [HelpTopic] = [
             .text("Choose a color scheme in Settings (⌘,) under “Syntax colors”:"),
             .bullets([
                 "The preview below the picker shows real highlighted code in the open tab’s language, updating live as you try themes.",
+                "Until you pick one yourself, the default follows the appearance: Paper in Light, Monokai in Dark. Choosing a theme (or None) makes the choice permanent.",
                 "“None” turns highlighting off and returns the editor to the system appearance.",
                 "Each theme also sets the editor’s background and plain-text color — it applies to every tab, including plain notes.",
                 "Nine themes ship built-in, light (Paper, Daylight, Solar Light) and dark (Midnight, Monokai, Nord, Dracula, Sunset, Forest).",

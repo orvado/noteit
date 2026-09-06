@@ -15,7 +15,6 @@ struct ContentView: View {
     @AppStorage("NoteIt.explorerVisible") private var showExplorer = true
     /// Explorer pane width, drag-resizable and persisted.
     @AppStorage("NoteIt.explorerWidth") private var explorerWidth = 232.0
-    @State private var dragStartWidth: Double?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -98,6 +97,12 @@ struct ContentView: View {
                 }.help("Snippets (⌘J)")
             }
         }
+    }
+
+    // MARK: - Explorer resize handle
+    private var resizeHandle: some View {
+        PaneSplitter(width: $explorerWidth, min: 160, max: 440)
+            .frame(width: 8)
     }
 
     // MARK: - Tab bar
@@ -234,6 +239,86 @@ struct TabChip: View {
         .buttonStyle(.plain)
         .onHover { hoveringClose = $0 }
         .help("Close tab (⌘W)")
+    }
+}
+
+/// Native pane splitter for the explorer edge. SwiftUI's onHover/DragGesture
+/// on a bare strip get overruled by the surrounding AppKit views (the
+/// NSTextView editor wins cursor updates and can swallow the gesture), so
+/// the divider is a real NSView with a proper cursor rect and mouse
+/// tracking — the reliable macOS pattern for draggable pane dividers.
+struct PaneSplitter: NSViewRepresentable {
+    @Binding var width: Double
+    var min: Double
+    var max: Double
+
+    func makeNSView(context: Context) -> SplitterView {
+        let v = SplitterView()
+        v.minWidth = min
+        v.maxWidth = max
+        v.currentWidth = width
+        return v
+    }
+
+    func updateNSView(_ v: SplitterView, context: Context) {
+        v.minWidth = min
+        v.maxWidth = max
+        v.currentWidth = width
+        v.onResize = { width = $0 }
+    }
+
+    final class SplitterView: NSView {
+        var minWidth: Double = 160
+        var maxWidth: Double = 440
+        var currentWidth: Double = 232
+        var onResize: ((Double) -> Void)?
+        private var startWindowX: CGFloat?
+        private var startWidth: Double?
+
+        override var acceptsFirstResponder: Bool { false }
+        override var isOpaque: Bool { false }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeLeftRight)
+        }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.separatorColor.setStroke()
+            let line = NSBezierPath()
+            line.move(to: NSPoint(x: bounds.midX, y: 0))
+            line.line(to: NSPoint(x: bounds.midX, y: bounds.height))
+            line.lineWidth = 1
+            line.stroke()
+        }
+
+        // Deltas are measured in window coordinates — the view's own origin
+        // shifts on every step of the resize as SwiftUI re-lays out the pane.
+        override func mouseDown(with event: NSEvent) {
+            startWindowX = event.locationInWindow.x
+            startWidth = currentWidth
+            // Cursor rects are suspended for the whole drag session; hold the
+            // resize cursor ourselves so it stays consistent.
+            NSCursor.resizeLeftRight.set()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let x0 = startWindowX, let w0 = startWidth else { return }
+            let dx = Double(event.locationInWindow.x - x0)
+            onResize?(Swift.min(maxWidth, Swift.max(minWidth, w0 + dx)))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            startWindowX = nil
+            startWidth = nil
+            // A drag session suspends cursor rects, so releasing the button
+            // over a view without cursor management (the SwiftUI pane beside
+            // us, after the pane clamped at its minimum) would leave the
+            // resize cursor stuck. Restore the arrow and re-arm our rects —
+            // if the pointer is still over the splitter, the resize cursor
+            // correctly comes right back.
+            NSCursor.arrow.set()
+            window?.invalidateCursorRects(for: self)
+        }
     }
 }
 

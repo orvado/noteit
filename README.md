@@ -13,8 +13,8 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Snippets**: `trigger + Tab` to expand, `{date}`/`{time}` templates, `⌘J` manager + insert, defaults: `date time lorem sig todo swiftlet swiftfunc`
 - **Language packs**: built-in snippet packs (~30 snippets each) for Python, JavaScript, Java, C#, C/C++, TypeScript, SQL, Go, Rust and Kotlin — include them via **Language Packs…** in the snippet manager; each pack shows as a folder whose snippets can be viewed, added, edited and deleted (edits persist even while a pack is turned off)
 - **Active language**: detected per tab from the file extension, or from content for unsaved files; override it in the status-bar picker (the manual choice sticks until the tab closes) — only the active language's pack snippets expand
-- **Syntax highlighting** for the 10 pack languages, with 9 color schemes (light + dark) configurable in Settings with a live preview; extensible per-language rule sets and theme catalog
-- **Workspace & file explorer**: open a folder (`⌥⌘O`) and browse it in a collapsible sidebar (`⌘\`) — single click previews a file in a read-only tab, double click opens it for editing, unsaved files show green; the workspace is remembered between launches
+- **Syntax highlighting** for the 10 pack languages, with 9 color schemes (light + dark) configurable in Settings with a live preview; defaults to Paper in Light / Monokai in Dark until you pick one; extensible per-language rule sets and theme catalog
+- **Workspace & file explorer**: open a folder (`⌥⌘O`) and browse it in a collapsible, drag-to-resize sidebar (`⌘\`) — single click previews a file in a read-only tab, double click opens it for editing, unsaved files show green; the workspace is remembered between launches
 - **Undo / Redo** (`⌘Z` `⇧⌘Z`), **Cut / Copy / Paste / Select All** (`⌘X C V A`) — native responder chain
 - **Find next / previous** (`⌘G` `⇧⌘G`), native Find panel also available
 - **Go to line** (`⌘L`)

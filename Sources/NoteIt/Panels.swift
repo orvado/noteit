@@ -789,7 +789,10 @@ struct SettingsSheet: View {
     private var syntaxThemeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Picker("Syntax colors", selection: $store.settings.highlightTheme) {
+                Picker("Syntax colors", selection: Binding(
+                    get: { store.effectiveHighlightThemeID },
+                    set: { store.settings.highlightTheme = $0 }
+                )) {
                     Text("None").tag(HighlightThemeCatalog.noneID)
                     ForEach(HighlightThemeCatalog.all) { theme in
                         Text(theme.name).tag(theme.id)
@@ -798,11 +801,15 @@ struct SettingsSheet: View {
                 Spacer()
             }
             SyntaxThemePreview(
-                themeID: store.settings.highlightTheme,
+                themeID: store.effectiveHighlightThemeID,
                 language: previewLanguage)
                 .frame(height: 168)
             Text("Live preview — the open tab's language (\(previewLanguage.displayName)); the editor re-colors instantly.")
                 .font(.caption).foregroundStyle(.secondary)
+            if store.settings.highlightTheme == nil {
+                Text("Default in effect: Paper in Light appearance, Monokai in Dark. Picking a theme (or None) makes the choice permanent.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 

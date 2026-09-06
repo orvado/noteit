@@ -36,6 +36,8 @@ final class DocumentStore: ObservableObject {
     @Published var languagePackSnippets: [String: [TextSnippet]] = [:]
     /// The open workspace folder (file explorer pane), restored on launch.
     let workspace = WorkspaceStore()
+    /// Workspace-wide find & replace state (left pane, Search tab).
+    let workspaceSearch = WorkspaceSearchStore()
 
     /// Weak registry of live NSTextViews per document, for find/goto/print.
     var textViews: [UUID: NSTextView] = [:]
@@ -208,6 +210,29 @@ final class DocumentStore: ObservableObject {
         docObservers[doc.id] = doc.$isDirty
             .dropFirst()
             .sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
+    /// Opens (or reuses) a preview tab for `url` and flashes the given match
+    /// range in the editor. `range` refers to freshly-read file content.
+    func openPreviewSelecting(url: URL, range: NSRange) {
+        openPreview(url: url)
+        revealSelection(inFile: url, range: range)
+    }
+
+    /// Opens `url` for editing (promoting a preview) and selects the match.
+    func openForEditingSelecting(url: URL, range: NSRange) {
+        openForEditing(url: url)
+        revealSelection(inFile: url, range: range)
+    }
+
+    private func revealSelection(inFile url: URL, range: NSRange) {
+        guard let doc = selectedDocument, doc.fileURL == url,
+              let tv = textViews[doc.id] else { return }
+        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: (doc.text as NSString).length))
+        guard clamped.length > 0 || clamped.location == 0 else { return }
+        tv.setSelectedRange(clamped)
+        tv.scrollRangeToVisible(clamped)
+        tv.showFindIndicator(for: clamped)
     }
 
     // MARK: - File IO

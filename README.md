@@ -15,6 +15,7 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Active language**: detected per tab from the file extension, or from content for unsaved files; override it in the status-bar picker (the manual choice sticks until the tab closes) — only the active language's pack snippets expand
 - **Syntax highlighting** for the 10 pack languages, with 9 color schemes (light + dark) configurable in Settings with a live preview; defaults to Paper in Light / Monokai in Dark until you pick one; extensible per-language rule sets and theme catalog
 - **Workspace & file explorer**: open a folder (`⌥⌘O`) and browse it in a collapsible, drag-to-resize sidebar (`⌘\`) — single click previews a file in a read-only tab, double click opens it for editing, unsaved files show green; the workspace is remembered between launches
+- **Find in workspace** (`⇧⌘F`): search/replace across all workspace files from the left pane — grouped per-line results, click to preview at the match, per-row replacement preview with ✓ to confirm one, and a confirmed Replace All
 - **Undo / Redo** (`⌘Z` `⇧⌘Z`), **Cut / Copy / Paste / Select All** (`⌘X C V A`) — native responder chain
 - **Find next / previous** (`⌘G` `⇧⌘G`), native Find panel also available
 - **Go to line** (`⌘L`)
@@ -63,6 +64,7 @@ Sources/NoteIt/
   HelpView.swift     — in-app help browser (⌘?): detailed usage instructions per feature
   License.swift      — embedded Apache License 2.0 text (shown in About)
   WorkspaceExplorer.swift — workspace folder tree (preview vs. edit, unsaved markers)
+  WorkspaceSearch.swift — workspace find & replace (left-pane Search tab)
   Commands.swift     — all menus + shortcuts, Format gating
 Resources/Info.plist — app bundle metadata
 Resources/NoteIt.icns— app icon (generated)
@@ -79,6 +81,7 @@ scripts/make-icon.sh — icon render + icns packager (calls make-icon.swift)
 | Open / Quick open | `⌘O` / `⌘P` |
 | Open folder (workspace) | `⌥⌘O` |
 | Toggle file explorer | `⌘\` |
+| Find in workspace | `⇧⌘F` |
 | Save / As / All | `⌘S` / `⇧⌘S` / `⌥⌘S` |
 | Find / Replace | `⌘F` / `⌥⌘F` |
 | Next / Prev | `⌘G` / `⇧⌘G` |

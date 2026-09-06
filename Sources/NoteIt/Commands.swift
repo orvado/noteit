@@ -70,6 +70,10 @@ struct NoteItCommands: Commands {
                 .keyboardShortcut("f", modifiers: .command)
             Button("Find and Replace…") { NotificationCenter.default.post(name: .noteItToggleReplace, object: nil) }
                 .keyboardShortcut("f", modifiers: [.command, .option])
+            Button("Find in Workspace…") {
+                NotificationCenter.default.post(name: .noteItSearchWorkspace, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
             Button("Find Next") { store.findNext() }.keyboardShortcut("g", modifiers: .command)
             Button("Find Previous") { store.findPrevious() }.keyboardShortcut("g", modifiers: [.command, .shift])
             Button("Go to Line…") { NotificationCenter.default.post(name: .noteItGoToLine, object: nil) }

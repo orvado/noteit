@@ -129,6 +129,26 @@ let helpTopics: [HelpTopic] = [
         ]
     ),
     HelpTopic(
+        id: "wsearch", title: "Find in Workspace", icon: "text.magnifyingglass",
+        subtitle: "Search and replace across the whole workspace",
+        blocks: [
+            .text("Workspace search (⇧⌘F, or the Search tab in the left pane) looks through every file in the open workspace — hidden files and binaries are skipped."),
+            .steps([
+                "Press ⇧⌘F (or pick “Search” in the left pane) and type a query.",
+                "Press ⏎ — results appear grouped by file, one line per match, with the matched text highlighted. The “Aa” and “.*” buttons switch case-sensitivity and regular expressions, matching the editor’s find bar.",
+                "Click a result to preview the file with the match selected and flashed in the editor; double-click to open the file for editing at the same spot.",
+            ]),
+            .text("Replacing — nothing is written until you confirm:"),
+            .bullets([
+                "Open the replace row with the ∨ button and enter the replacement text.",
+                "With the preview eye enabled, every result line shows how it would read after the replacement, with the new text highlighted in green.",
+                "The small ✓ button on the right of a result replaces just that match, then the results refresh.",
+                "Replace All asks “Are you sure?” first — it edits every matched file on disk and cannot be undone.",
+            ]),
+            .note("Files that are open in an editing tab are edited through the tab, so unsaved changes and undo stay intact; the file on disk catches up when the tab saves."),
+        ]
+    ),
+    HelpTopic(
         id: "snippets", title: "Snippets", icon: "text.badge.plus",
         subtitle: "Triggers, Tab expansion, and placeholders",
         blocks: [

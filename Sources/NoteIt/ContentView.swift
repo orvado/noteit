@@ -15,32 +15,88 @@ struct ContentView: View {
     @AppStorage("NoteIt.explorerVisible") private var showExplorer = true
     /// Explorer pane width, drag-resizable and persisted.
     @AppStorage("NoteIt.explorerWidth") private var explorerWidth = 232.0
+    /// Which view the left pane shows — like VSCode's Explorer/Search tabs.
+    @AppStorage("NoteIt.paneMode") private var paneMode: PaneMode = .explorer
+
+    enum PaneMode: String {
+        case explorer, search
+    }
 
     var body: some View {
+        toolbarLayer
+    }
+
+    /// Layered view modifiers keep the type-checker happy — one long chain
+    /// (sheets + notifications + toolbar) no longer compiles in reasonable
+    /// time.
+    private var toolbarLayer: some View {
+        receiverLayer
+            .focusedSceneValue(\.documentStore, store)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigation) {
+                    Button(action: { withAnimation { showExplorer.toggle() } }) {
+                        Image(systemName: "sidebar.leading")
+                    }
+                    .help("Toggle file explorer (⌘\\)")
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button(action: { store.selectedDocument.map { store.save($0) } }) {
+                        Image(systemName: "square.and.arrow.down")
+                    }.help("Save (⌘S)")
+                    Button(action: { showQuickOpen = true }) {
+                        Image(systemName: "magnifyingglass")
+                    }.help("Quick open (⌘P)")
+                    Button(action: { showFind = true; showReplace = false }) {
+                        Image(systemName: "text.magnifyingglass")
+                    }.help("Find (⌘F)")
+                    Button(action: { showSnippets = true }) {
+                        Image(systemName: "text.badge.plus")
+                    }.help("Snippets (⌘J)")
+                }
+            }
+    }
+
+    private var receiverLayer: some View {
+        sheetLayer
+            .onReceive(NotificationCenter.default.publisher(for: .noteItToggleFind)) { _ in
+                showReplace = false; showFind.toggle()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItToggleReplace)) { _ in
+                showFind = true; showReplace.toggle()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItGoToLine)) { _ in showGoTo = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItQuickOpen)) { _ in showQuickOpen = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItSnippets)) { _ in showSnippets = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItSettings)) { _ in showSettings = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItAbout)) { _ in showAbout = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItHelp)) { _ in showHelp = true }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItOpenFolder)) { _ in
+                store.openWorkspacePanel()
+                showExplorer = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItCloseWorkspace)) { _ in
+                store.closeWorkspace()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItToggleExplorer)) { _ in
+                withAnimation { showExplorer.toggle() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItSearchWorkspace)) { _ in
+                paneMode = .search
+                showExplorer = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItFindNext)) { _ in store.findNext() }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItFindPrev)) { _ in store.findPrevious() }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItToggleWrap)) { _ in store.settings.wrapLines.toggle() }
+            .onReceive(NotificationCenter.default.publisher(for: .noteItToggleSpell)) { _ in store.settings.spellcheck.toggle() }
+    }
+
+    private var sheetLayer: some View {
         HStack(spacing: 0) {
             if showExplorer {
-                WorkspaceExplorer(store: store, workspace: store.workspace)
-                    .frame(width: explorerWidth)
+                leftPane
                 resizeHandle
             }
-            VStack(spacing: 0) {
-                tabBar
-                Divider()
-                if showFind || showReplace {
-                    SearchReplaceBar(store: store, showFind: $showFind, showReplace: $showReplace)
-                    Divider()
-                }
-                editorArea
-                Divider()
-                if let doc = store.selectedDocument {
-                    StatusBarView(doc: doc, store: store)
-                } else {
-                    HStack { Text("No documents").font(.caption).foregroundStyle(.secondary); Spacer() }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(.bar)
-                }
-            }
-            .frame(maxWidth: .infinity)
+            mainColumn
         }
         .sheet(isPresented: $showGoTo) { GoToLineSheet(store: store, isPresented: $showGoTo) }
         .sheet(isPresented: $showQuickOpen) { QuickOpenSheet(store: store, isPresented: $showQuickOpen) }
@@ -48,55 +104,46 @@ struct ContentView: View {
         .sheet(isPresented: $showSettings) { SettingsSheet(store: store, isPresented: $showSettings) }
         .sheet(isPresented: $showAbout) { AboutView() }
         .sheet(isPresented: $showHelp) { HelpView(isPresented: $showHelp) }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleFind)) { _ in
-            showReplace = false; showFind.toggle()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleReplace)) { _ in
-            showFind = true; showReplace.toggle()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItGoToLine)) { _ in showGoTo = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItQuickOpen)) { _ in showQuickOpen = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItSnippets)) { _ in showSnippets = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItSettings)) { _ in showSettings = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItAbout)) { _ in showAbout = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItHelp)) { _ in showHelp = true }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItOpenFolder)) { _ in
-            store.openWorkspacePanel()
-            showExplorer = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItCloseWorkspace)) { _ in
-            store.closeWorkspace()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleExplorer)) { _ in
-            withAnimation { showExplorer.toggle() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItFindNext)) { _ in store.findNext() }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItFindPrev)) { _ in store.findPrevious() }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleWrap)) { _ in store.settings.wrapLines.toggle() }
-        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleSpell)) { _ in store.settings.spellcheck.toggle() }
-        .focusedSceneValue(\.documentStore, store)
-        .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                Button(action: { withAnimation { showExplorer.toggle() } }) {
-                    Image(systemName: "sidebar.leading")
-                }
-                .help("Toggle file explorer (⌘\\)")
+    }
+
+    // MARK: - Left pane (explorer / workspace search)
+    private var leftPane: some View {
+        VStack(spacing: 0) {
+            Picker("Pane", selection: $paneMode) {
+                Text("Files").tag(PaneMode.explorer)
+                Text("Search").tag(PaneMode.search)
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button(action: { store.selectedDocument.map { store.save($0) } }) {
-                    Image(systemName: "square.and.arrow.down")
-                }.help("Save (⌘S)")
-                Button(action: { showQuickOpen = true }) {
-                    Image(systemName: "magnifyingglass")
-                }.help("Quick open (⌘P)")
-                Button(action: { showFind = true; showReplace = false }) {
-                    Image(systemName: "text.magnifyingglass")
-                }.help("Find (⌘F)")
-                Button(action: { showSnippets = true }) {
-                    Image(systemName: "text.badge.plus")
-                }.help("Snippets (⌘J)")
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            switch paneMode {
+            case .explorer:
+                WorkspaceExplorer(store: store, workspace: store.workspace)
+            case .search:
+                WorkspaceSearchPane(store: store, search: store.workspaceSearch)
             }
         }
+        .frame(width: explorerWidth)
+    }
+
+    private var mainColumn: some View {
+        VStack(spacing: 0) {
+            tabBar
+            Divider()
+            if showFind || showReplace {
+                SearchReplaceBar(store: store, showFind: $showFind, showReplace: $showReplace)
+                Divider()
+            }
+            editorArea
+            Divider()
+            if let doc = store.selectedDocument {
+                StatusBarView(doc: doc, store: store)
+            } else {
+                HStack { Text("No documents").font(.caption).foregroundStyle(.secondary); Spacer() }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(.bar)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Explorer resize handle
@@ -344,6 +391,7 @@ extension Notification.Name {    static let noteItToggleFind = Notification.Name
     static let noteItOpenFolder = Notification.Name("noteItOpenFolder")
     static let noteItCloseWorkspace = Notification.Name("noteItCloseWorkspace")
     static let noteItToggleExplorer = Notification.Name("noteItToggleExplorer")
+    static let noteItSearchWorkspace = Notification.Name("noteItSearchWorkspace")
     static let noteItFindNext = Notification.Name("noteItFindNext")
     static let noteItFindPrev = Notification.Name("noteItFindPrev")
     static let noteItToggleWrap = Notification.Name("noteItToggleWrap")

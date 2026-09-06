@@ -179,21 +179,33 @@ struct QuickOpenSheet: View {
 }
 
 // MARK: - Snippets manager
+
+/// Where a snippet lives: the personal list ("My Snippets") or one of the
+/// enabled language packs. Duplicate triggers across scopes are fine — only
+/// one language is ever active in the editor at a time.
+enum SnippetSelection: Hashable {
+    case global(TextSnippet.ID)
+    case pack(Language, TextSnippet.ID)
+}
+
 struct SnippetsSheet: View {
     @ObservedObject var store: DocumentStore
     @Binding var isPresented: Bool
 
-    @State private var selection: TextSnippet.ID?
+    @State private var selection: SnippetSelection?
     @State private var filter = ""
-    @State private var pendingDelete: TextSnippet.ID?
+    @State private var pendingDelete: SnippetSelection?
     @State private var showRestoreConfirm = false
+    @State private var showLanguagePacks = false
+    @State private var expandedPacks: Set<Language> = []
+    @State private var pendingPackReset: Language?
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
             HStack(spacing: 0) {
-                listPane.frame(width: 252)
+                listPane.frame(width: 262)
                 Divider()
                 detailPane
             }
@@ -201,46 +213,63 @@ struct SnippetsSheet: View {
             Divider()
             footer
         }
-        .frame(width: 720, height: 520)
-        .onAppear { if selection == nil { selection = store.snippets.first?.id } }
+        .frame(width: 760, height: 560)
+        .onAppear { if selection == nil { selection = initialSelection } }
         // Delete key removes the selected snippet (confirmed first).
-        .onDeleteCommand { if let id = selection { pendingDelete = id } }
-        .alert("Delete Snippet?", isPresented: deleteAlert, presenting: pendingDelete) { id in
+        .onDeleteCommand { if let sel = selection { pendingDelete = sel } }
+        .sheet(isPresented: $showLanguagePacks) {
+            LanguagePacksSheet(store: store, isPresented: $showLanguagePacks)
+        }
+        .alert("Delete Snippet?", isPresented: deleteAlert, presenting: pendingDelete) { sel in
             Button("Cancel", role: .cancel) { pendingDelete = nil }
-            Button("Delete", role: .destructive) { delete(id: id); pendingDelete = nil }
-        } message: { id in
-            Text("“\(trigger(of: id))” will be removed. This can’t be undone.")
+            Button("Delete", role: .destructive) { delete(sel); pendingDelete = nil }
+        } message: { sel in
+            Text("“\(trigger(of: sel))” will be removed. This can’t be undone.")
         }
         .alert("Restore Default Snippets?", isPresented: $showRestoreConfirm) {
             Button("Cancel", role: .cancel) { }
             Button("Restore", role: .destructive) { restoreDefaults() }
         } message: {
-            Text("Every snippet in the list will be replaced by the built-in set.")
+            Text("Your personal snippet list will be replaced by the built-in set. Language packs are not affected.")
+        }
+        .alert("Reset Pack to Built-ins?", isPresented: packResetAlert, presenting: pendingPackReset) { lang in
+            Button("Cancel", role: .cancel) { pendingPackReset = nil }
+            Button("Reset", role: .destructive) {
+                store.setSnippets(lang.builtInSnippets, for: lang)
+                pendingPackReset = nil
+            }
+        } message: { lang in
+            Text("All snippets in the \(lang.displayName) pack — including your edits — will be replaced by the \(lang.builtInSnippets.count) built-in snippets.")
         }
     }
 
     // MARK: Subviews
 
     private var header: some View {
-        VStack(spacing: 3) {
-            Text("Text Snippets").font(.headline)
-            Text("Type a trigger then press Tab to expand. {date} and {time} auto-fill.")
-                .font(.caption).foregroundStyle(.secondary)
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Text Snippets").font(.headline)
+                Text("Type a trigger then press Tab to expand. {date} and {time} auto-fill.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Language Packs…") { showLanguagePacks = true }
+                .help("Choose which programming-language snippet packs to include")
         }
-        .padding(.top, 14).padding(.bottom, 10)
+        .padding(.top, 14).padding(.bottom, 10).padding(.horizontal, 16)
     }
 
     private var listPane: some View {
         VStack(spacing: 0) {
             HStack(spacing: 2) {
                 Button(action: add) { Image(systemName: "plus") }
-                    .help("New snippet")
-                Button(action: { if let id = selection { pendingDelete = id } }) { Image(systemName: "minus") }
+                    .help("New snippet (in the selected list)")
+                Button(action: { if let sel = selection { pendingDelete = sel } }) { Image(systemName: "minus") }
                     .help("Delete snippet (⌫)").disabled(selection == nil)
                 Button(action: duplicate) { Image(systemName: "square.on.square") }
                     .help("Duplicate snippet").disabled(selection == nil)
                 Spacer()
-                Text("\(store.snippets.count)").font(.caption).foregroundStyle(.secondary)
+                Text("\(totalSnippetCount)").font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -251,24 +280,72 @@ struct SnippetsSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 8).padding(.vertical, 6)
 
-            List(filtered, selection: $selection) { snip in
-                SnippetRow(snippet: snip, flagged: !isUsable(snip))
-                    .tag(snip.id)
-                    .contextMenu {
-                        Button("Insert") { insert(snip) }
-                        Button("Duplicate") { selection = snip.id; duplicate() }
-                        Divider()
-                        Button("Delete", role: .destructive) { pendingDelete = snip.id }
+            List(selection: $selection) {
+                Section("My Snippets") {
+                    ForEach(filteredGlobal) { snip in
+                        snippetRow(snip, sel: .global(snip.id))
                     }
+                }
+                if !store.enabledLanguages.isEmpty {
+                    Section("Language Packs") {
+                        ForEach(orderedEnabledPacks) { lang in
+                            packGroup(for: lang)
+                        }
+                    }
+                }
             }
             .listStyle(.inset(alternatesRowBackgrounds: true))
         }
     }
 
+    private func snippetRow(_ snip: TextSnippet, sel: SnippetSelection) -> some View {
+        SnippetRow(snippet: snip, flagged: !isUsable(snip, peers: peers(of: sel)))
+            .tag(sel)
+            .contextMenu {
+                Button("Insert") { insert(snip) }
+                Button("Duplicate") { selection = sel; duplicate() }
+                Divider()
+                Button("Delete", role: .destructive) { pendingDelete = sel }
+            }
+    }
+
+    /// A pack folder: expandable, with its snippets inside. While a filter is
+    /// active the folder stays open and hides entirely when nothing matches.
+    @ViewBuilder
+    private func packGroup(for lang: Language) -> some View {
+        let matches = filteredPack(lang)
+        if filter.isEmpty || !matches.isEmpty {
+            DisclosureGroup(isExpanded: packExpansion(for: lang)) {
+                ForEach(matches) { snip in
+                    snippetRow(snip, sel: .pack(lang, snip.id))
+                }
+                if matches.isEmpty && filter.isEmpty {
+                    Text("No snippets")
+                        .font(.caption).italic().foregroundStyle(.secondary)
+                        .padding(.leading, 8)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill").foregroundStyle(.tint).font(.callout)
+                    Text(lang.displayName)
+                    Text("(\(store.snippets(for: lang).count))")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button("New Snippet") { add(to: lang) }
+                    Divider()
+                    Button("Reset to Built-ins…") { pendingPackReset = lang }
+                }
+            }
+        }
+    }
+
     private var detailPane: some View {
         Group {
-            if let idx = selectedIndex, store.snippets.indices.contains(idx) {
-                editor(for: idx)
+            if let ctx = selection.flatMap(editorContext) {
+                editor(ctx)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "text.badge.plus").font(.largeTitle).foregroundStyle(.secondary)
@@ -281,21 +358,25 @@ struct SnippetsSheet: View {
         }
     }
 
-    private func editor(for idx: Int) -> some View {
+    private func editor(_ c: SnippetEditorContext) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let pack = c.packName {
+                Label(pack, systemImage: "folder.fill")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             LabeledContent("Trigger") {
-                TextField("e.g. sig", text: $store.snippets[idx].trigger)
+                TextField("e.g. sig", text: c.snippet.trigger)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
             }
             LabeledContent("Description") {
-                TextField("optional", text: $store.snippets[idx].description)
+                TextField("optional", text: c.snippet.description)
                     .textFieldStyle(.roundedBorder)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Expansion").font(.callout).foregroundStyle(.secondary)
-                TextEditor(text: $store.snippets[idx].expansion)
+                TextEditor(text: c.snippet.expansion)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 140)
                     .padding(3)
@@ -303,7 +384,7 @@ struct SnippetsSheet: View {
                         .stroke(Color.secondary.opacity(0.35), lineWidth: 1))
             }
 
-            if let problem = validation(for: store.snippets[idx]) {
+            if let problem = validation(for: c.snippet.wrappedValue, peers: c.peers) {
                 HStack(spacing: 5) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     Text(problem).font(.caption).foregroundStyle(.orange)
@@ -314,7 +395,7 @@ struct SnippetsSheet: View {
                 Text("Preview — {date} / {time} resolved")
                     .font(.callout).foregroundStyle(.secondary)
                 ScrollView {
-                    Text(store.snippets[idx].resolvedExpansion())
+                    Text(c.snippet.wrappedValue.resolvedExpansion())
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -334,11 +415,11 @@ struct SnippetsSheet: View {
     private var footer: some View {
         HStack {
             Button("Restore Defaults") { showRestoreConfirm = true }
-                .help("Replace the whole list with the built-in snippets")
+                .help("Replace your personal snippets with the built-in set")
             Spacer()
-            if let idx = selectedIndex, store.snippets.indices.contains(idx) {
-                Button("Insert") { insert(store.snippets[idx]) }
-                    .disabled(validation(for: store.snippets[idx]) != nil)
+            if let ctx = selection.flatMap(editorContext) {
+                Button("Insert") { insert(ctx.snippet.wrappedValue) }
+                    .disabled(validation(for: ctx.snippet.wrappedValue, peers: ctx.peers) != nil)
                     .help("Insert this snippet at the cursor and close")
             }
             Button("Done") { isPresented = false }.keyboardShortcut(.defaultAction)
@@ -348,43 +429,132 @@ struct SnippetsSheet: View {
 
     // MARK: Data
 
-    private var filtered: [TextSnippet] {
-        let q = filter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return store.snippets }
-        return store.snippets.filter {
-            $0.trigger.lowercased().contains(q)
-                || $0.description.lowercased().contains(q)
-                || $0.expansion.lowercased().contains(q)
+    private struct SnippetEditorContext {
+        let snippet: Binding<TextSnippet>
+        let peers: [TextSnippet]
+        let packName: String?
+    }
+
+    /// Binding into the snippet's containing list (personal or pack). The
+    /// bindings are rebuilt every render, so they always point at the
+    /// current index after inserts/deletes.
+    private func editorContext(_ sel: SnippetSelection) -> SnippetEditorContext? {
+        switch sel {
+        case .global(let id):
+            guard let idx = store.snippets.firstIndex(where: { $0.id == id }) else { return nil }
+            return SnippetEditorContext(
+                snippet: Binding(
+                    get: { self.store.snippets.indices.contains(idx) ? self.store.snippets[idx] : TextSnippet(trigger: "", expansion: "") },
+                    set: { if self.store.snippets.indices.contains(idx) { self.store.snippets[idx] = $0 } }),
+                peers: store.snippets,
+                packName: nil)
+        case .pack(let lang, let id):
+            let list = store.snippets(for: lang)
+            guard let idx = list.firstIndex(where: { $0.id == id }) else { return nil }
+            return SnippetEditorContext(
+                snippet: Binding(
+                    get: { self.store.snippets(for: lang).indices.contains(idx) ? self.store.snippets(for: lang)[idx] : TextSnippet(trigger: "", expansion: "") },
+                    set: {
+                        var l = self.store.snippets(for: lang)
+                        guard l.indices.contains(idx) else { return }
+                        l[idx] = $0
+                        self.store.setSnippets(l, for: lang)
+                    }),
+                peers: list,
+                packName: lang.displayName)
         }
     }
 
-    private var selectedIndex: Int? {
-        guard let id = selection else { return nil }
-        return store.snippets.firstIndex(where: { $0.id == id })
+    private var filterQuery: String {
+        filter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func matches(_ s: TextSnippet) -> Bool {
+        let q = filterQuery
+        guard !q.isEmpty else { return true }
+        return s.trigger.lowercased().contains(q)
+            || s.description.lowercased().contains(q)
+            || s.expansion.lowercased().contains(q)
+    }
+
+    private var filteredGlobal: [TextSnippet] {
+        store.snippets.filter(matches)
+    }
+
+    /// Enabled packs in "most popular language" order (the enum's case order).
+    private var orderedEnabledPacks: [Language] {
+        Language.allCases.filter { store.enabledLanguages.contains($0) }
+    }
+
+    private func filteredPack(_ lang: Language) -> [TextSnippet] {
+        if !filterQuery.isEmpty, lang.displayName.lowercased().contains(filterQuery) {
+            return store.snippets(for: lang)
+        }
+        return store.snippets(for: lang).filter(matches)
+    }
+
+    private var totalSnippetCount: Int {
+        store.snippets.count + orderedEnabledPacks.reduce(0) { $0 + store.snippets(for: $1).count }
+    }
+
+    private var initialSelection: SnippetSelection? {
+        if let first = store.snippets.first { return .global(first.id) }
+        for lang in orderedEnabledPacks {
+            if let first = store.snippets(for: lang).first { return .pack(lang, first.id) }
+        }
+        return nil
+    }
+
+    private func peers(of sel: SnippetSelection) -> [TextSnippet] {
+        switch sel {
+        case .global: return store.snippets
+        case .pack(let lang, _): return store.snippets(for: lang)
+        }
+    }
+
+    private func packExpansion(for lang: Language) -> Binding<Bool> {
+        Binding(
+            get: { !filterQuery.isEmpty || expandedPacks.contains(lang) },
+            set: { open in
+                // While filtering, folders are forced open so matches show.
+                guard filterQuery.isEmpty else { return }
+                if open { expandedPacks.insert(lang) } else { expandedPacks.remove(lang) }
+            }
+        )
     }
 
     private var deleteAlert: Binding<Bool> {
         Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })
     }
 
-    private func trigger(of id: TextSnippet.ID) -> String {
-        store.snippets.first(where: { $0.id == id })?.trigger ?? ""
+    private var packResetAlert: Binding<Bool> {
+        Binding(get: { pendingPackReset != nil }, set: { if !$0 { pendingPackReset = nil } })
+    }
+
+    private func trigger(of sel: SnippetSelection) -> String {
+        switch sel {
+        case .global(let id):
+            return store.snippets.first(where: { $0.id == id })?.trigger ?? ""
+        case .pack(let lang, let id):
+            return store.snippets(for: lang).first(where: { $0.id == id })?.trigger ?? ""
+        }
     }
 
     /// A snippet is usable when it has a unique, whitespace-free trigger and a
-    /// non-empty expansion. Anything else is flagged with a warning badge.
-    private func isUsable(_ s: TextSnippet) -> Bool {
-        validation(for: s) == nil
+    /// non-empty expansion. Uniqueness only counts within its own list — the
+    /// same trigger may exist in other packs or in My Snippets.
+    private func isUsable(_ s: TextSnippet, peers: [TextSnippet]) -> Bool {
+        validation(for: s, peers: peers) == nil
     }
 
-    private func validation(for s: TextSnippet) -> String? {
+    private func validation(for s: TextSnippet, peers: [TextSnippet]) -> String? {
         let t = s.trigger.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.isEmpty { return "A trigger is required — it’s the word you type before pressing Tab." }
         if t.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
             return "Triggers can’t contain spaces or newlines."
         }
-        if store.snippets.contains(where: { $0.id != s.id && $0.trigger == t }) {
-            return "“\(t)” is already used by another snippet."
+        if peers.contains(where: { $0.id != s.id && $0.trigger == t }) {
+            return "“\(t)” is already used by another snippet in this list."
         }
         if s.expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "The expansion is empty — this snippet would insert nothing."
@@ -394,31 +564,79 @@ struct SnippetsSheet: View {
 
     // MARK: Actions
 
+    /// + button: adds to the selected pack when a pack snippet is selected,
+    /// otherwise to My Snippets.
     private func add() {
-        let s = TextSnippet(trigger: uniqueTrigger(from: "new"), expansion: "", description: "")
-        store.snippets.append(s)
-        selection = s.id
+        if case .pack(let lang, _) = selection {
+            add(to: lang)
+        } else {
+            let s = TextSnippet(trigger: uniqueTrigger(from: "new", in: store.snippets), expansion: "", description: "")
+            store.snippets.append(s)
+            selection = .global(s.id)
+            filter = ""
+        }
+    }
+
+    private func add(to lang: Language) {
+        let list = store.snippets(for: lang)
+        let s = TextSnippet(trigger: uniqueTrigger(from: "new", in: list), expansion: "", description: "")
+        store.setSnippets(list + [s], for: lang)
+        expandedPacks.insert(lang)
+        selection = .pack(lang, s.id)
         filter = ""
     }
 
     private func duplicate() {
-        guard let idx = selectedIndex else { return }
-        var copy = store.snippets[idx]
-        copy.id = UUID()
-        copy.trigger = uniqueTrigger(from: copy.trigger)
-        store.snippets.insert(copy, at: idx + 1)
-        selection = copy.id
+        guard let sel = selection else { return }
+        switch sel {
+        case .global(let id):
+            guard let idx = store.snippets.firstIndex(where: { $0.id == id }) else { return }
+            var copy = store.snippets[idx]
+            copy.id = UUID()
+            copy.trigger = uniqueTrigger(from: copy.trigger, in: store.snippets)
+            store.snippets.insert(copy, at: idx + 1)
+            selection = .global(copy.id)
+        case .pack(let lang, let id):
+            var list = store.snippets(for: lang)
+            guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
+            var copy = list[idx]
+            copy.id = UUID()
+            copy.trigger = uniqueTrigger(from: copy.trigger, in: list)
+            list.insert(copy, at: idx + 1)
+            store.setSnippets(list, for: lang)
+            expandedPacks.insert(lang)
+            selection = .pack(lang, copy.id)
+        }
         filter = ""
     }
 
-    private func delete(id: TextSnippet.ID) {
-        guard let idx = store.snippets.firstIndex(where: { $0.id == id }) else { return }
-        store.snippets.remove(at: idx)
-        if selection == id {
-            if store.snippets.indices.contains(idx) {
-                selection = store.snippets[idx].id
-            } else {
-                selection = store.snippets.last?.id
+    private func delete(_ sel: SnippetSelection) {
+        switch sel {
+        case .global(let id):
+            guard let idx = store.snippets.firstIndex(where: { $0.id == id }) else { return }
+            store.snippets.remove(at: idx)
+            if selection == sel {
+                if store.snippets.indices.contains(idx) {
+                    selection = .global(store.snippets[idx].id)
+                } else if store.snippets.indices.contains(idx - 1) {
+                    selection = .global(store.snippets[idx - 1].id)
+                } else {
+                    selection = initialSelection
+                }
+            }
+        case .pack(let lang, let id):
+            var list = store.snippets(for: lang)
+            guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
+            list.remove(at: idx)
+            store.setSnippets(list, for: lang)
+            if selection == sel {
+                if list.indices.contains(idx) {
+                    selection = .pack(lang, list[idx].id)
+                } else if list.indices.contains(idx - 1) {
+                    selection = .pack(lang, list[idx - 1].id)
+                } else {
+                    selection = nil
+                }
             }
         }
     }
@@ -430,17 +648,73 @@ struct SnippetsSheet: View {
 
     private func restoreDefaults() {
         store.snippets = TextSnippet.defaults
-        selection = store.snippets.first?.id
+        selection = store.snippets.first.map { .global($0.id) }
         filter = ""
     }
 
-    /// Appends 2, 3, … to `base` until the trigger isn't already taken.
-    private func uniqueTrigger(from base: String) -> String {
-        let taken = Set(store.snippets.map { $0.trigger })
+    /// Appends 2, 3, … to `base` until the trigger isn't already taken in
+    /// the given list.
+    private func uniqueTrigger(from base: String, in peers: [TextSnippet]) -> String {
+        let taken = Set(peers.map { $0.trigger })
         var candidate = base
         var n = 2
         while taken.contains(candidate) { candidate = "\(base)\(n)"; n += 1 }
         return candidate
+    }
+}
+
+// MARK: - Language pack picker
+/// Scrollable checkbox list of the built-in language packs. Toggling a pack
+/// on seeds its snippet copy (first time only); toggling off keeps the
+/// edited copy so re-enabling restores the user's snippets.
+struct LanguagePacksSheet: View {
+    @ObservedObject var store: DocumentStore
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Language Packs").font(.headline)
+                Text("Included packs appear as folders in the snippet manager. A pack’s snippets become active when a document of that language is open.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Language.allCases) { lang in
+                        Toggle(isOn: packBinding(lang)) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(lang.displayName)
+                                    Text("\(lang.builtInSnippets.count) built-in snippets")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .toggleStyle(.checkbox)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .frame(maxHeight: 264)
+            Text("Edits made inside a pack are kept even while the pack is turned off — turning it back on restores your edited snippets.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Done") { isPresented = false }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+    }
+
+    private func packBinding(_ lang: Language) -> Binding<Bool> {
+        Binding(
+            get: { store.enabledLanguages.contains(lang) },
+            set: { store.setLanguagePack(lang, enabled: $0) }
+        )
     }
 }
 

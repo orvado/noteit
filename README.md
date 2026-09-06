@@ -10,6 +10,8 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Spellcheck** toggle (`⌥⌘K`, status bar “Spell”)
 - **Word wrap** toggle (`⌥⌘L`, status bar “Wrap”), horizontal scroll when off
 - **Snippets**: `trigger + Tab` to expand, `{date}`/`{time}` templates, `⌘J` manager + insert, defaults: `date time lorem sig todo swiftlet swiftfunc`
+- **Language packs**: built-in snippet packs (~30 snippets each) for Python, JavaScript, Java, C#, C/C++, TypeScript, SQL, Go, Rust and Kotlin — include them via **Language Packs…** in the snippet manager; each pack shows as a folder whose snippets can be viewed, added, edited and deleted (edits persist even while a pack is turned off)
+- **Active language**: detected per tab from the file extension, or from content for unsaved files; override it in the status-bar picker (the manual choice sticks until the tab closes) — only the active language's pack snippets expand
 - **Undo / Redo** (`⌘Z` `⇧⌘Z`), **Cut / Copy / Paste / Select All** (`⌘X C V A`) — native responder chain
 - **Find next / previous** (`⌘G` `⇧⌘G`), native Find panel also available
 - **Go to line** (`⌘L`)
@@ -20,7 +22,7 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Quick open** (`⌘P`) over recents + **Recent files** menu + `⌘O` browse
 - **Export PDF** (`⇧⌘E`), Export Text, **Print** (`⇧⌘P`)
 - **Minimal settings** (`⌘,`): font, size, wrap, line numbers, spell, plain-text, autosave, tab width, appearance
-- Status bar: Ln/Col, words, lines, saved state, filename
+- Status bar: Ln/Col, words, lines, saved state, filename, language picker
 
 ## Run
 
@@ -42,11 +44,13 @@ With full Xcode installed you can also do `open Package.swift` — Xcode generat
 ```
 Sources/NoteIt/
   NoteItApp.swift    — @main App, WindowGroup, appearance
-  Models.swift       — EditorDocument, TextSnippet, AppSettings, SearchOptions
-  DocumentStore.swift— tabs, file IO, recents, autosave, find/replace engine, goto, snippets, export/print
+  Models.swift       — EditorDocument (incl. active language), TextSnippet, AppSettings, SearchOptions
+  Language.swift     — Language packs: names, file extensions, content detection
+  LanguagePackSnippets.swift — ~30 built-in snippets per language pack
+  DocumentStore.swift— tabs, file IO, recents, autosave, find/replace engine, goto, snippets + language packs, export/print
   EditorView.swift   — NSTextView wrapper + line-number ruler, wrap, spell, tab width
-  ContentView.swift  — tab bar, editor, status bar, toolbar + notification bridge
-  Panels.swift       — SearchReplaceBar, GoToLine, QuickOpen (⌘P), Snippets, Settings
+  ContentView.swift  — tab bar, editor, status bar (+ language picker), toolbar + notification bridge
+  Panels.swift       — SearchReplaceBar, GoToLine, QuickOpen (⌘P), Snippets manager + Language Packs, Settings
   Commands.swift     — all menus + shortcuts, Format gating
 Resources/Info.plist — app bundle metadata
 scripts/make-app.sh  — SwiftPM → NoteIt.app packager

@@ -11,6 +11,13 @@ final class DocumentStore: ObservableObject {
     @Published var snippets: [TextSnippet] = TextSnippet.defaults
     @Published var recentFiles: [URL] = []
     @Published var search = SearchOptions()
+    /// Language packs the user has included; only these show in the snippet
+    /// manager and only the active document's pack expands in the editor.
+    @Published var enabledLanguages: Set<Language> = []
+    /// Per-pack snippets, keyed by `Language.rawValue`. Entries deliberately
+    /// survive disabling a pack so user edits are still there when the pack
+    /// is re-enabled later.
+    @Published var languagePackSnippets: [String: [TextSnippet]] = [:]
 
     /// Weak registry of live NSTextViews per document, for find/goto/print.
     var textViews: [UUID: NSTextView] = [:]
@@ -28,15 +35,19 @@ final class DocumentStore: ObservableObject {
     private var settingsKey: String { "NoteIt.settings.v1" }
     private var snippetsKey: String { "NoteIt.snippets.v1" }
     private var recentsKey: String { "NoteIt.recents.v1" }
+    private var enabledLangsKey: String { "NoteIt.enabledLangs.v1" }
+    private var langPacksKey: String { "NoteIt.langPacks.v1" }
 
     init() {
         loadPersistedState()
         if documents.isEmpty { newDocument() }
         startAutosave()
-        // Persist settings/snippets/recents on change
+        // Persist settings/snippets/recents/packs on change
         $settings.sink { [weak self] s in self?.saveSettings(s) }.store(in: &cancellables)
         $snippets.sink { [weak self] s in self?.saveSnippets(s) }.store(in: &cancellables)
         $recentFiles.sink { [weak self] r in self?.saveRecents(r) }.store(in: &cancellables)
+        $enabledLanguages.sink { [weak self] l in self?.saveEnabledLanguages(l) }.store(in: &cancellables)
+        $languagePackSnippets.sink { [weak self] p in self?.saveLanguagePacks(p) }.store(in: &cancellables)
     }
 
     // MARK: - Tabs
@@ -247,6 +258,18 @@ final class DocumentStore: ObservableObject {
         if let arr = ud.array(forKey: recentsKey) as? [String] {
             recentFiles = arr.compactMap { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
         }
+        if let arr = ud.stringArray(forKey: enabledLangsKey) {
+            enabledLanguages = Set(arr.compactMap { Language(rawValue: $0) })
+        }
+        if let d = ud.data(forKey: langPacksKey),
+           let packs = try? JSONDecoder().decode([String: [TextSnippet]].self, from: d) {
+            languagePackSnippets = packs
+        }
+        // An enabled pack must always have storage; seed built-ins for any
+        // pack that has none yet (e.g. defaults changed between releases).
+        for lang in enabledLanguages where languagePackSnippets[lang.rawValue] == nil {
+            languagePackSnippets[lang.rawValue] = lang.builtInSnippets
+        }
         // Restore autosaved drafts (and delete files as we go so we don't
         // re-restore the same drafts on the *next* launch — previous bug
         // used a fresh UUID per doc, leaking 256 files).
@@ -296,6 +319,14 @@ final class DocumentStore: ObservableObject {
     }
     private func saveRecents(_ r: [URL]) {
         UserDefaults.standard.set(r.map { $0.path }, forKey: recentsKey)
+    }
+
+    private func saveEnabledLanguages(_ langs: Set<Language>) {
+        UserDefaults.standard.set(Array(langs).map { $0.rawValue }, forKey: enabledLangsKey)
+    }
+
+    private func saveLanguagePacks(_ packs: [String: [TextSnippet]]) {
+        if let d = try? JSONEncoder().encode(packs) { UserDefaults.standard.set(d, forKey: langPacksKey) }
     }
 
     // MARK: - Find / Replace engine
@@ -448,6 +479,39 @@ final class DocumentStore: ObservableObject {
         tv.window?.makeFirstResponder(tv)
     }
 
+    // MARK: - Language packs
+
+    /// Includes or excludes a pack. Enabling seeds the pack with a private
+    /// copy of the built-ins the first time; disabling keeps the stored
+    /// snippets so re-enabling restores the user's edited set.
+    func setLanguagePack(_ lang: Language, enabled: Bool) {
+        if enabled {
+            enabledLanguages.insert(lang)
+            if languagePackSnippets[lang.rawValue] == nil {
+                languagePackSnippets[lang.rawValue] = lang.builtInSnippets
+            }
+        } else {
+            enabledLanguages.remove(lang)
+        }
+    }
+
+    func snippets(for lang: Language) -> [TextSnippet] {
+        languagePackSnippets[lang.rawValue] ?? []
+    }
+
+    func setSnippets(_ snippets: [TextSnippet], for lang: Language) {
+        languagePackSnippets[lang.rawValue] = snippets
+    }
+
+    /// Snippets whose triggers are live for `doc`: the personal list plus the
+    /// pack of the document's active language (when that pack is enabled).
+    /// Triggers may repeat across packs — only one pack is ever in play, and
+    /// personal snippets win on conflicts.
+    func activeSnippets(for doc: EditorDocument?) -> [TextSnippet] {
+        guard let lang = doc?.activeLanguage, enabledLanguages.contains(lang) else { return snippets }
+        return snippets + snippets(for: lang)
+    }
+
     // MARK: - Snippets
     func insertSnippet(_ snippet: TextSnippet) {
         guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
@@ -466,7 +530,8 @@ final class DocumentStore: ObservableObject {
     }
 
     func expandTriggerIfNeeded(in tv: NSTextView) -> Bool {
-        // Tab-triggered snippet expansion: word before caret matches trigger?
+        // Tab-triggered snippet expansion: word before caret matches a trigger
+        // in this document's active set (personal + active language pack)?
         let sel = tv.selectedRange()
         guard sel.length == 0, sel.location > 0 else { return false }
         let ns = tv.string as NSString
@@ -474,14 +539,15 @@ final class DocumentStore: ObservableObject {
         let prefix = ns.substring(to: upto)
         let word = prefix.components(separatedBy: CharacterSet.whitespacesAndNewlines).last?
             .components(separatedBy: CharacterSet(charactersIn: "(){}[];,.\"'")).last ?? ""
+        let doc = documents.first(where: { textViews[$0.id] === tv })
         guard !word.isEmpty,
-              let snip = snippets.first(where: { $0.trigger == word }) else { return false }
+              let snip = activeSnippets(for: doc).first(where: { $0.trigger == word }) else { return false }
         let range = NSRange(location: upto - (word as NSString).length, length: (word as NSString).length)
         let expansion = snip.resolvedExpansion()
         tv.shouldChangeText(in: range, replacementString: expansion)
         tv.replaceCharacters(in: range, with: expansion)
         tv.didChangeText()
-        if let doc = documents.first(where: { textViews[$0.id] === tv }) {
+        if let doc {
             startPlaceholderSession(docID: doc.id,
                                     inserted: NSRange(location: range.location,
                                                       length: (expansion as NSString).length),

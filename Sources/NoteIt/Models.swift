@@ -7,19 +7,53 @@ final class EditorDocument: ObservableObject, Identifiable, Equatable {
 
     let id = UUID()
     @Published var text: String {
-        didSet { if text != oldValue { isDirty = true } }
+        didSet {
+            if text != oldValue {
+                isDirty = true
+                refreshLanguageDetection()
+            }
+        }
     }
-    @Published var fileURL: URL?
+    @Published var fileURL: URL? {
+        didSet { refreshLanguageDetection() }
+    }
     @Published var isDirty: Bool = false
     @Published var cursorLine: Int = 1
     @Published var cursorColumn: Int = 1
     /// When false the doc is plain-text only (no rich text / no formatting cmds).
     @Published var formattingEnabled: Bool = false
+    /// The document's active snippet-pack language, or nil for "Unknown".
+    @Published private(set) var activeLanguage: Language?
+    /// True once the user picked a language manually (status-bar picker).
+    /// Auto-detection then stays off for the rest of this document's life —
+    /// even if the user switches back to Unknown.
+    private(set) var languagePinnedByUser: Bool = false
 
     init(text: String = "", fileURL: URL? = nil) {
         self.text = text
         self.fileURL = fileURL
         self.isDirty = false
+        refreshLanguageDetection()
+    }
+
+    /// Manual override from the status bar. Pinning survives save-as and
+    /// content changes; only a fresh tab auto-detects again.
+    func setActiveLanguage(_ lang: Language?) {
+        activeLanguage = lang
+        languagePinnedByUser = true
+    }
+
+    /// Re-runs auto-detection unless the user pinned a language: extension of
+    /// the saved file first, then (unsaved docs only) content heuristics.
+    func refreshLanguageDetection() {
+        guard !languagePinnedByUser else { return }
+        if let ext = fileURL?.pathExtension, !ext.isEmpty {
+            activeLanguage = Language.fromFileExtension(ext)
+        } else if fileURL == nil {
+            activeLanguage = Language.detect(fromContent: text)
+        } else {
+            activeLanguage = nil
+        }
     }
 
     var title: String {

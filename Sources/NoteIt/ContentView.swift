@@ -116,6 +116,7 @@ struct StatusBarView: View {
                 Text(url.lastPathComponent).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     .help(url.path)
             }
+            languagePicker
             Spacer()
             Toggle(isOn: $store.settings.wrapLines) { Text("Wrap") }
                 .toggleStyle(.checkbox).font(.caption).help("Wrap long lines (⌥⌘L)")
@@ -129,6 +130,26 @@ struct StatusBarView: View {
         .font(.caption)
         .padding(.horizontal, 10).padding(.vertical, 5)
         .background(.bar)
+    }
+
+    /// Manual language override. Picking anything here (including Unknown)
+    /// pins the choice: auto-detection stays off until the tab is closed.
+    private var languagePicker: some View {
+        Picker("Language", selection: Binding(
+            get: { doc.activeLanguage },
+            set: { doc.setActiveLanguage($0) }
+        )) {
+            Text("Unknown").tag(Language?.none)
+            ForEach(Language.allCases) { lang in
+                Text(lang.displayName).tag(Language?.some(lang))
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .fixedSize()
+        .help(doc.languagePinnedByUser
+              ? "Language set manually — auto-detection is paused for this tab"
+              : "Active language, detected from the file extension or content. Choose one to override.")
     }
 }
 

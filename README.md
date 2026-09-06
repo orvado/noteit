@@ -23,6 +23,7 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Export PDF** (`⇧⌘E`), Export Text, **Print** (`⇧⌘P`)
 - **Minimal settings** (`⌘,`): font, size, wrap, line numbers, spell, plain-text, autosave, tab width, appearance
 - **About dialog** (app menu → About NoteIt): feature overview, credits, full Apache 2.0 license text
+- **In-app help** (`⌘?` / Help ▸ NoteIt Help): topic-by-topic usage guide for every feature
 - **App icon**: macOS squircle with a folded-corner note card (`scripts/make-icon.sh` regenerates `Resources/NoteIt.icns`)
 - Status bar: Ln/Col, words, lines, saved state, filename, language picker
 
@@ -54,6 +55,7 @@ Sources/NoteIt/
   ContentView.swift  — tab bar, editor, status bar (+ language picker), toolbar + notification bridge
   Panels.swift       — SearchReplaceBar, GoToLine, QuickOpen (⌘P), Snippets manager + Language Packs, Settings
   AboutView.swift    — About dialog (features, credits, Apache 2.0 license)
+  HelpView.swift     — in-app help browser (⌘?): detailed usage instructions per feature
   License.swift      — embedded Apache License 2.0 text (shown in About)
   Commands.swift     — all menus + shortcuts, Format gating
 Resources/Info.plist — app bundle metadata
@@ -79,6 +81,7 @@ scripts/make-icon.sh — icon render + icns packager (calls make-icon.swift)
 | Dark appearance | `⌥⌘D` |
 | Export PDF / Print | `⇧⌘E` / `⇧⌘P` |
 | Settings | `⌘,` |
+| Help | `⌘?` |
 
 ## Notes
 

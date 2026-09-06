@@ -116,6 +116,14 @@ struct NoteItCommands: Commands {
             Button("Settings…") { NotificationCenter.default.post(name: .noteItSettings, object: nil) }
                 .keyboardShortcut(",", modifiers: .command)
         }
+
+        // MARK: - Help
+        CommandGroup(replacing: .help) {
+            Button("NoteIt Help") {
+                NotificationCenter.default.post(name: .noteItHelp, object: nil)
+            }
+            .keyboardShortcut("?", modifiers: .command)
+        }
     }
 
     // MARK: - Formatting helpers (only when doc.formattingEnabled)

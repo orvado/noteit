@@ -8,6 +8,10 @@
     <string>NoteIt</string>
     <key>CFBundleExecutable</key>
     <string>NoteIt</string>
+    <key>CFBundleIconFile</key>
+    <string>NoteIt</string>
+    <key>CFBundleIconName</key>
+    <string>NoteIt</string>
     <key>CFBundleIdentifier</key>
     <string>com.noteit.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -27,7 +31,7 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>NoteIt — lightweight macOS text editor</string>
+    <string>© 2026 Ken Richards — Apache License 2.0</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>CFBundleDocumentTypes</key>

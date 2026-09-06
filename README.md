@@ -22,6 +22,8 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Quick open** (`⌘P`) over recents + **Recent files** menu + `⌘O` browse
 - **Export PDF** (`⇧⌘E`), Export Text, **Print** (`⇧⌘P`)
 - **Minimal settings** (`⌘,`): font, size, wrap, line numbers, spell, plain-text, autosave, tab width, appearance
+- **About dialog** (app menu → About NoteIt): feature overview, credits, full Apache 2.0 license text
+- **App icon**: macOS squircle with a folded-corner note card (`scripts/make-icon.sh` regenerates `Resources/NoteIt.icns`)
 - Status bar: Ln/Col, words, lines, saved state, filename, language picker
 
 ## Run
@@ -51,9 +53,14 @@ Sources/NoteIt/
   EditorView.swift   — NSTextView wrapper + line-number ruler, wrap, spell, tab width
   ContentView.swift  — tab bar, editor, status bar (+ language picker), toolbar + notification bridge
   Panels.swift       — SearchReplaceBar, GoToLine, QuickOpen (⌘P), Snippets manager + Language Packs, Settings
+  AboutView.swift    — About dialog (features, credits, Apache 2.0 license)
+  License.swift      — embedded Apache License 2.0 text (shown in About)
   Commands.swift     — all menus + shortcuts, Format gating
 Resources/Info.plist — app bundle metadata
+Resources/NoteIt.icns— app icon (generated)
+LICENSE              — Apache License 2.0
 scripts/make-app.sh  — SwiftPM → NoteIt.app packager
+scripts/make-icon.sh — icon render + icns packager (calls make-icon.swift)
 ```
 
 ## Shortcuts cheat sheet
@@ -78,3 +85,7 @@ scripts/make-app.sh  — SwiftPM → NoteIt.app packager
 - Lightweight: no WebView/Electron, cold start ~instant, memory ~tens of MB.
 - Plain-text UTF-8 throughout; formatting attributes are only kept when “Format” is on.
 - Autosave writes through to the file URL when present, otherwise to drafts (restored on launch).
+
+## License
+
+Copyright 2026 Ken Richards (kenr@orvado.com). Licensed under the Apache License, Version 2.0 — see [LICENSE](LICENSE). The full license text is also available in-app via **NoteIt → About NoteIt → View License**.

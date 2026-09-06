@@ -106,6 +106,12 @@ struct NoteItCommands: Commands {
                 .keyboardShortcut("0", modifiers: .command)
         }
 
+        CommandGroup(replacing: .appInfo) {
+            Button("About NoteIt") {
+                NotificationCenter.default.post(name: .noteItAbout, object: nil)
+            }
+        }
+
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { NotificationCenter.default.post(name: .noteItSettings, object: nil) }
                 .keyboardShortcut(",", modifiers: .command)

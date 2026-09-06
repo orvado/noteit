@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showQuickOpen = false
     @State private var showSnippets = false
     @State private var showSettings = false
+    @State private var showAbout = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +33,7 @@ struct ContentView: View {
         .sheet(isPresented: $showQuickOpen) { QuickOpenSheet(store: store, isPresented: $showQuickOpen) }
         .sheet(isPresented: $showSnippets) { SnippetsSheet(store: store, isPresented: $showSnippets) }
         .sheet(isPresented: $showSettings) { SettingsSheet(store: store, isPresented: $showSettings) }
+        .sheet(isPresented: $showAbout) { AboutView() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItToggleFind)) { _ in
             showReplace = false; showFind.toggle()
         }
@@ -42,6 +44,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .noteItQuickOpen)) { _ in showQuickOpen = true }
         .onReceive(NotificationCenter.default.publisher(for: .noteItSnippets)) { _ in showSnippets = true }
         .onReceive(NotificationCenter.default.publisher(for: .noteItSettings)) { _ in showSettings = true }
+        .onReceive(NotificationCenter.default.publisher(for: .noteItAbout)) { _ in showAbout = true }
         .onReceive(NotificationCenter.default.publisher(for: .noteItFindNext)) { _ in store.findNext() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItFindPrev)) { _ in store.findPrevious() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItToggleWrap)) { _ in store.settings.wrapLines.toggle() }
@@ -213,6 +216,7 @@ extension Notification.Name {    static let noteItToggleFind = Notification.Name
     static let noteItQuickOpen = Notification.Name("noteItQuickOpen")
     static let noteItSnippets = Notification.Name("noteItSnippets")
     static let noteItSettings = Notification.Name("noteItSettings")
+    static let noteItAbout = Notification.Name("noteItAbout")
     static let noteItFindNext = Notification.Name("noteItFindNext")
     static let noteItFindPrev = Notification.Name("noteItFindPrev")
     static let noteItToggleWrap = Notification.Name("noteItToggleWrap")

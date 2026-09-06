@@ -110,9 +110,34 @@ struct AppSettings: Codable {
     var autoSaveInterval: Double = 5
     var appearance: Appearance = .system
     var tabWidth: Int = 4
+    /// Syntax theme id — "none" disables highlighting (HighlightThemeCatalog).
+    var highlightTheme: String = HighlightThemeCatalog.noneID
 
     enum Appearance: String, Codable, CaseIterable {
         case system, light, dark
+    }
+
+    // Decoding tolerates keys missing from older persisted versions —
+    // otherwise one new field would discard every stored preference.
+    enum CodingKeys: String, CodingKey {
+        case fontName, fontSize, wrapLines, showLineNumbers, spellcheck
+        case autoSaveEnabled, autoSaveInterval, appearance, tabWidth, highlightTheme
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fontName = try c.decodeIfPresent(String.self, forKey: .fontName) ?? "SF Mono"
+        fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? 13
+        wrapLines = try c.decodeIfPresent(Bool.self, forKey: .wrapLines) ?? true
+        showLineNumbers = try c.decodeIfPresent(Bool.self, forKey: .showLineNumbers) ?? true
+        spellcheck = try c.decodeIfPresent(Bool.self, forKey: .spellcheck) ?? true
+        autoSaveEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoSaveEnabled) ?? true
+        autoSaveInterval = try c.decodeIfPresent(Double.self, forKey: .autoSaveInterval) ?? 5
+        appearance = try c.decodeIfPresent(Appearance.self, forKey: .appearance) ?? .system
+        tabWidth = try c.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
+        highlightTheme = try c.decodeIfPresent(String.self, forKey: .highlightTheme) ?? HighlightThemeCatalog.noneID
     }
 }
 

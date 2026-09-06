@@ -779,8 +779,78 @@ struct SettingsSheet: View {
                 }.onChange(of: store.settings.autoSaveInterval) { store.startAutosave() }
             }
             Stepper("Tab width: \(store.settings.tabWidth)", value: $store.settings.tabWidth, in: 2...8)
+            Divider()
+            syntaxThemeSection
             HStack { Spacer(); Button("Done") { isPresented = false }.keyboardShortcut(.defaultAction) }
         }
-        .padding(20).frame(width: 420)
+        .padding(20).frame(width: 440)
+    }
+
+    private var syntaxThemeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Picker("Syntax colors", selection: $store.settings.highlightTheme) {
+                    Text("None").tag(HighlightThemeCatalog.noneID)
+                    ForEach(HighlightThemeCatalog.all) { theme in
+                        Text(theme.name).tag(theme.id)
+                    }
+                }
+                Spacer()
+            }
+            SyntaxThemePreview(
+                themeID: store.settings.highlightTheme,
+                language: previewLanguage)
+                .frame(height: 168)
+            Text("Live preview — the open tab's language (\(previewLanguage.displayName)); the editor re-colors instantly.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var previewLanguage: Language {
+        store.selectedDocument?.activeLanguage ?? .python
+    }
+}
+
+// MARK: - Syntax theme preview
+
+/// Renders sample code through the real tokenizer with the selected theme's
+/// colors, on the theme's background — a faithful miniature of the editor.
+struct SyntaxThemePreview: View {
+    let themeID: String
+    let language: Language
+
+    var body: some View {
+        let theme = HighlightThemeCatalog.resolve(themeID)
+        let background = theme.map { Color(nsColor: $0.background) } ?? Color(nsColor: .textBackgroundColor)
+        let attributed = attributedSample(theme: theme)
+
+        return ScrollView([.horizontal]) {
+            Text(attributed)
+                .textSelection(.enabled)
+                .padding(10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6)
+            .stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+    }
+
+    private func attributedSample(theme: HighlightTheme?) -> AttributedString {
+        let plainColor = theme?.plain ?? NSColor.textColor
+        let code = language.sampleCode
+        let attributed = NSMutableAttributedString(
+            string: code,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .regular),
+                .foregroundColor: plainColor,
+            ])
+        let ns = code as NSString
+        for token in SyntaxHighlighter.tokens(for: language, text: code) {
+            guard token.range.location + token.range.length <= ns.length else { continue }
+            let color = theme.map { $0.color(for: token.type) } ?? NSColor.textColor
+            attributed.addAttribute(.foregroundColor, value: color, range: token.range)
+        }
+        return AttributedString(attributed)
     }
 }

@@ -163,6 +163,21 @@ let helpTopics: [HelpTopic] = [
         ]
     ),
     HelpTopic(
+        id: "syntax", title: "Syntax Highlighting", icon: "paintpalette",
+        subtitle: "Colored code and color schemes",
+        blocks: [
+            .text("Code is colored automatically using the tab’s active language — the same language that drives the snippet packs. Keywords, strings, numbers, comments, types, function calls, constants, attributes, and preprocessor directives each get their own color."),
+            .text("Choose a color scheme in Settings (⌘,) under “Syntax colors”:"),
+            .bullets([
+                "The preview below the picker shows real highlighted code in the open tab’s language, updating live as you try themes.",
+                "“None” turns highlighting off and returns the editor to the system appearance.",
+                "Each theme also sets the editor’s background and plain-text color — it applies to every tab, including plain notes.",
+                "Nine themes ship built-in, light (Paper, Daylight, Solar Light) and dark (Midnight, Monokai, Nord, Dracula, Sunset, Forest).",
+            ]),
+            .note("Highlighting only colors what you see — files stay plain UTF-8, fonts are untouched, and nothing is added to the document."),
+        ]
+    ),
+    HelpTopic(
         id: "autosave", title: "Auto-save & Drafts", icon: "clock.arrow.circlepath",
         subtitle: "Never lose an untitled note",
         blocks: [

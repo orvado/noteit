@@ -55,6 +55,147 @@ enum Language: String, CaseIterable, Codable, Identifiable, Hashable {
         }
     }
 
+    /// Short representative snippet used by the syntax-theme preview in
+    /// Settings (and handy for manual testing).
+    var sampleCode: String {
+        switch self {
+        case .python:
+            return """
+            import math
+
+            def circle_area(radius: float) -> float:
+                \"\"\"Return the area of a circle.\"\"\"
+                if radius < 0:
+                    raise ValueError("radius must be >= 0")
+                return math.pi * radius ** 2
+
+            print(circle_area(2.5))  # ~19.63
+            """
+        case .javascript:
+            return """
+            import { fetchUser } from "./api.js";
+
+            async function greet(id) {
+              const user = await fetchUser(id);
+              // fall back for missing names
+              const name = user?.name ?? "stranger";
+              return `Hello, ${name}!`;
+            }
+
+            console.log(greet(42));
+            """
+        case .java:
+            return """
+            import java.util.List;
+
+            public final class Greeter {
+                private static final String PREFIX = "Hello";
+
+                public static String greet(List<String> names) {
+                    // join with commas, or greet the world
+                    return PREFIX + ", " + String.join(", ", names) + "!";
+                }
+            }
+            """
+        case .csharp:
+            return """
+            using System.Linq;
+
+            namespace Demo {
+                public static class Greeter {
+                    static string Greet(string name) =>
+                        $"Hello, {name}!"; // interpolation
+
+                    public static void Run() {
+                        var names = new[] { "Ada", "Ken" };
+                        names.Select(Greet).ToList();
+                    }
+                }
+            }
+            """
+        case .cpp:
+            return """
+            #include <stdio.h>
+            #include "util.h"
+
+            #define MAX_USERS 100
+
+            typedef struct { int id; char name[32]; } User;
+
+            int main(int argc, char *argv[]) {
+                User u = { 1, "Ada" };
+                /* greet the user */
+                printf("Hello, %s!\\n", u.name);
+                return 0;
+            }
+            """
+        case .typescript:
+            return """
+            interface User { name: string; age: number }
+
+            function oldest(users: User[]): User | null {
+              let best: User | null = null;
+              for (const u of users) {
+                if (best === null || u.age > best.age) best = u;
+              }
+              return best;
+            }
+            """
+        case .sql:
+            return """
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR(80) NOT NULL
+            );
+
+            SELECT u.name, COUNT(*) AS total
+            FROM users u
+            JOIN orders o ON o.user_id = u.id  -- joined rows
+            WHERE u.created_at > '2026-01-01'
+            GROUP BY u.name ORDER BY total DESC LIMIT 10;
+            """
+        case .go:
+            return """
+            package main
+
+            import "fmt"
+
+            // Point is a 2D coordinate.
+            type Point struct{ X, Y float64 }
+
+            func main() {
+                p := Point{X: 1.5, Y: -2}
+                fmt.Printf("(%v, %v)\\n", p.X, p.Y)
+            }
+            """
+        case .rust:
+            return """
+            use std::collections::HashMap;
+
+            /// Count how often each word appears.
+            fn word_counts(text: &str) -> HashMap<&str, usize> {
+                let mut counts = HashMap::new();
+                for word in text.split_whitespace() {
+                    *counts.entry(word).or_insert(0) += 1;
+                }
+                counts
+            }
+            """
+        case .kotlin:
+            return """
+            data class User(val name: String, val age: Int = 0)
+
+            fun oldest(users: List<User>): User? =
+                users.maxByOrNull { it.age }  // null when empty
+
+            fun main() {
+                val team = listOf(User("Ada", 36), User("Ken", 41))
+                println("Oldest: ${'$'}{oldest(team)?.name ?: "none"}")
+            }
+            """
+        }
+    }
+
     /// Lower-cased markers used to guess the language from document content
     /// (only consulted for unsaved documents). Markers are chosen to be
     /// distinctive across the pack languages.

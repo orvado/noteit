@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 // MARK: - Line number gutter
 /// A plain NSView that draws line numbers to the left of the text view.
@@ -21,6 +22,10 @@ final class LineNumberGutterView: NSView {
     }
     var trailingPadding: CGFloat = 8
     var leadingPadding: CGFloat = 8
+    /// Filled by the syntax theme; falls back to the system text background.
+    var background: NSColor = .textBackgroundColor {
+        didSet { if oldValue != background { needsDisplay = true } }
+    }
 
     /// Top-down geometry, matching `NSTextView` (which is flipped).
     override var isFlipped: Bool { true }
@@ -42,7 +47,7 @@ final class LineNumberGutterView: NSView {
               let layout = tv.layoutManager,
               let container = tv.textContainer else { return }
 
-        NSColor.textBackgroundColor.setFill()
+        background.setFill()
         bounds.fill()
         NSColor.separatorColor.setFill()
         NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height).fill()
@@ -346,6 +351,8 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.lastAppliedSettings = settingsFingerprint(store.settings)
         context.coordinator.textView = textView
         context.coordinator.docID = document.id
+        // Character edits drive syntax re-highlighting.
+        textView.textStorage?.delegate = context.coordinator
 
         store.registerTextView(textView, for: document.id)
 
@@ -379,6 +386,10 @@ struct EditorView: NSViewRepresentable {
         context.coordinator.docID = document.id
         context.coordinator.store = store
         context.coordinator.textView = textView
+        // Theme/language changes re-render SwiftUI, landing here — compare
+        // against what's applied and re-highlight when they differ. Text
+        // edits go through the storage delegate instead.
+        context.coordinator.noteAppearance(theme: store.settings.highlightTheme)
 
         textView.onTextChange = { [weak document] newText in
             let doc = document ?? self.document
@@ -429,6 +440,7 @@ struct EditorView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ container: EditorContainerView, coordinator: Coordinator) {
+        coordinator.textView?.textStorage?.delegate = nil
         if let id = coordinator.docID {
             coordinator.store?.unregisterTextView(for: id)
         }
@@ -479,19 +491,95 @@ struct EditorView: NSViewRepresentable {
         container.gutter.needsDisplay = true
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate {
         weak var textView: NoteTextView?
+        weak var container: EditorContainerView?
         var docID: UUID?
         weak var store: DocumentStore?
         var document: EditorDocument
         var lastSyncedText: String = ""
         var lastAppliedSettings: String = ""
+        private var rehighlightScheduled = false
+        /// Current syntax theme id, plus what has been applied — compared on
+        /// every SwiftUI pass so theme/language changes re-highlight.
+        private var themeID: String = HighlightThemeCatalog.noneID
+        private var appliedThemeID: String?
+        private var appliedLanguage: Language?
 
         init(document: EditorDocument, store: DocumentStore) {
             self.document = document
             self.docID = document.id
             self.store = store
             self.lastSyncedText = document.text
+        }
+
+        // MARK: Syntax highlighting
+
+        /// Called from updateNSView on every SwiftUI pass. Skips work unless
+        /// the theme or the document's active language changed.
+        func noteAppearance(theme: String) {
+            let lang = document.activeLanguage
+            guard appliedThemeID != theme || appliedLanguage != lang else { return }
+            themeID = theme
+            appliedThemeID = theme
+            appliedLanguage = lang
+            scheduleRehighlight()
+        }
+
+        /// Coalesces bursts of changes (each keystroke) into one pass.
+        func scheduleRehighlight() {
+            guard !rehighlightScheduled else { return }
+            rehighlightScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.rehighlightScheduled = false
+                self.rehighlight()
+            }
+        }
+
+        /// Applies the syntax theme: background + plain color always (when a
+        /// theme is selected), token colors for the document's active
+        /// language. Only touches `.foregroundColor` and the background —
+        /// font attributes and the undo stack are left alone.
+        func rehighlight() {
+            guard let textView else { return }
+            let theme = HighlightThemeCatalog.resolve(themeID)
+
+            let background = theme?.background ?? .textBackgroundColor
+            textView.backgroundColor = background
+            textView.enclosingScrollView?.backgroundColor = background
+            container?.gutter.background = background
+            textView.textColor = theme?.plain ?? .textColor
+
+            guard let storage = textView.textStorage else { return }
+            let whole = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            if let theme {
+                storage.addAttribute(.foregroundColor, value: theme.plain, range: whole)
+                if let lang = document.activeLanguage {
+                    let text = storage.string
+                    for token in SyntaxHighlighter.tokens(for: lang, text: text) {
+                        storage.addAttribute(.foregroundColor,
+                                             value: theme.color(for: token.type),
+                                             range: token.range)
+                    }
+                }
+            } else {
+                storage.removeAttribute(.foregroundColor, range: whole)
+            }
+            storage.endEditing()
+        }
+
+        // MARK: NSTextStorageDelegate
+
+        /// Character edits (typing, paste, replace-all, undo) re-highlight.
+        /// Attribute-only edits (our own color pass) are ignored, which also
+        /// breaks the would-be recursion.
+        func textStorage(_ textStorage: NSTextStorage,
+                         didProcessEditing editedMask: NSTextStorageEditActions,
+                         range editedRange: NSRange, changeInLength delta: Int) {
+            guard editedMask.contains(.editedCharacters) else { return }
+            scheduleRehighlight()
         }
     }
 }

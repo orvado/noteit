@@ -315,7 +315,7 @@ struct EditorView: NSViewRepresentable {
     func makeNSView(context: Context) -> EditorContainerView {
         let textView = NoteTextView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         textView.allowsUndo = true
-        textView.isEditable = true
+        textView.isEditable = !document.isPreview
         textView.isSelectable = true
         textView.isRichText = false
         textView.importsGraphics = false
@@ -390,6 +390,10 @@ struct EditorView: NSViewRepresentable {
         // against what's applied and re-highlight when they differ. Text
         // edits go through the storage delegate instead.
         context.coordinator.noteAppearance(theme: store.settings.highlightTheme)
+        // Preview promotion flips editability.
+        if textView.isEditable == document.isPreview {
+            textView.isEditable = !document.isPreview
+        }
 
         textView.onTextChange = { [weak document] newText in
             let doc = document ?? self.document

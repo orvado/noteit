@@ -34,6 +34,8 @@ final class DocumentStore: ObservableObject {
     /// survive disabling a pack so user edits are still there when the pack
     /// is re-enabled later.
     @Published var languagePackSnippets: [String: [TextSnippet]] = [:]
+    /// The open workspace folder (file explorer pane), restored on launch.
+    let workspace = WorkspaceStore()
 
     /// Weak registry of live NSTextViews per document, for find/goto/print.
     var textViews: [UUID: NSTextView] = [:]
@@ -42,6 +44,9 @@ final class DocumentStore: ObservableObject {
     /// Live snippet-placeholder navigation session, if any.
     /// See "Snippet placeholders" below.
     private var placeholderSession: PlaceholderSession?
+    /// Per-document isDirty subscriptions, republished so the file explorer
+    /// re-renders its green "unsaved" markers when tabs change state.
+    private var docObservers: [UUID: AnyCancellable] = [:]
 
     var selectedDocument: EditorDocument? {
         guard let id = selectedID else { return documents.first }
@@ -54,6 +59,7 @@ final class DocumentStore: ObservableObject {
     private var enabledLangsKey: String { "NoteIt.enabledLangs.v1" }
     private var langPacksKey: String { "NoteIt.langPacks.v1" }
     private var sessionKey: String { "NoteIt.session.v1" }
+    private var workspaceKey: String { "NoteIt.workspace.v1" }
 
     init() {
         loadPersistedState()
@@ -77,13 +83,15 @@ final class DocumentStore: ObservableObject {
     }
 
     // MARK: - Tabs
-    func newDocument(text: String = "", fileURL: URL? = nil) {
-        let doc = EditorDocument(text: text, fileURL: fileURL)
+    func newDocument(text: String = "", fileURL: URL? = nil, isPreview: Bool = false) {
+        let doc = EditorDocument(text: text, fileURL: fileURL, isPreview: isPreview)
         documents.append(doc)
         selectedID = doc.id
+        trackDirtyState(of: doc)
     }
 
     func closeDocument(_ doc: EditorDocument) {
+        docObservers.removeValue(forKey: doc.id)
         if let tv = textViews[doc.id] { syncFromTextView(tv, to: doc) }
         if doc.isDirty {
             let alert = NSAlert()
@@ -118,6 +126,77 @@ final class DocumentStore: ObservableObject {
         if let s = placeholderSession, s.docID != doc.id { placeholderSession = nil }
     }
 
+    // MARK: - Workspace
+
+    func openWorkspacePanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a folder to open as a workspace"
+        if panel.runModal() == .OK, let url = panel.url {
+            openWorkspace(url)
+        }
+    }
+
+    func openWorkspace(_ url: URL) {
+        workspace.open(url: url)
+        UserDefaults.standard.set(url.path, forKey: workspaceKey)
+    }
+
+    func closeWorkspace() {
+        workspace.close()
+        UserDefaults.standard.removeObject(forKey: workspaceKey)
+    }
+
+    // MARK: - Preview / open from explorer
+
+    /// Single click in the explorer: preview in a read-only tab. At most one
+    /// preview tab exists at a time — it is reused for every preview.
+    func openPreview(url: URL) {
+        if let editing = documents.first(where: { !$0.isPreview && $0.fileURL == url }) {
+            selectedID = editing.id   // already open for editing — just show it
+            return
+        }
+        guard let s = try? String(contentsOf: url, encoding: .utf8) else {
+            NSSound.beep()
+            return
+        }
+        if let preview = documents.first(where: { $0.isPreview }) {
+            preview.text = s
+            preview.fileURL = url
+            preview.isDirty = false
+            if let tv = textViews[preview.id] { tv.string = s }
+            selectedID = preview.id
+        } else {
+            newDocument(text: s, fileURL: url, isPreview: true)
+        }
+    }
+
+    /// Double click in the explorer: open for editing. A preview of the same
+    /// file is promoted in place.
+    func openForEditing(url: URL) {
+        if let editing = documents.first(where: { !$0.isPreview && $0.fileURL == url }) {
+            selectedID = editing.id
+            pushRecent(url)
+            return
+        }
+        if let preview = documents.first(where: { $0.isPreview && $0.fileURL == url }) {
+            preview.isPreview = false
+            selectedID = preview.id
+            pushRecent(url)
+            return
+        }
+        open(url: url)
+    }
+
+    /// Republishes a document's dirty state so explorer markers update.
+    private func trackDirtyState(of doc: EditorDocument) {
+        docObservers[doc.id] = doc.$isDirty
+            .dropFirst()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
     // MARK: - File IO
     func open() {
         let panel = NSOpenPanel()
@@ -132,7 +211,7 @@ final class DocumentStore: ObservableObject {
     }
 
     func open(url: URL) {
-        if let existing = documents.first(where: { $0.fileURL == url }) {
+        if let existing = documents.first(where: { !$0.isPreview && $0.fileURL == url }) {
             selectedID = existing.id
             // reload from disk
             if let s = try? String(contentsOf: url, encoding: .utf8) {
@@ -146,11 +225,18 @@ final class DocumentStore: ObservableObject {
             pushRecent(url)
             return
         }
+        if let preview = documents.first(where: { $0.isPreview && $0.fileURL == url }) {
+            // File ▸ Open on a previewed file promotes it to an editable tab.
+            preview.isPreview = false
+            selectedID = preview.id
+            pushRecent(url)
+            return
+        }
         do {
             let s = try String(contentsOf: url, encoding: .utf8)
             // Reuse empty untitled tab
             if documents.count == 1, let only = documents.first,
-               only.fileURL == nil, only.text.isEmpty, !only.isDirty {
+               only.fileURL == nil, only.text.isEmpty, !only.isDirty, !only.isPreview {
                 only.text = s; only.fileURL = url; only.isDirty = false
                 if let tv = textViews[only.id] { tv.string = s; only.isDirty = false }
                 selectedID = only.id
@@ -216,7 +302,7 @@ final class DocumentStore: ObservableObject {
     func autosaveTick() {
         guard settings.autoSaveEnabled else { return }
         let fm = FileManager.default
-        for doc in documents where doc.isDirty {
+        for doc in documents where doc.isDirty && !doc.isPreview {
             if let tv = textViews[doc.id] { syncFromTextView(tv, to: doc) }
             if let url = doc.fileURL {
                 try? doc.text.write(to: url, atomically: true, encoding: .utf8)
@@ -306,6 +392,11 @@ final class DocumentStore: ObservableObject {
         } else {
             restoreDraftsByMtime()
         }
+        // Restore the workspace folder (if it still exists).
+        if let path = ud.string(forKey: workspaceKey),
+           FileManager.default.fileExists(atPath: path) {
+            workspace.open(url: URL(fileURLWithPath: path))
+        }
     }
 
     /// Rebuilds the tab bar from the persisted session: file-backed tabs
@@ -330,6 +421,7 @@ final class DocumentStore: ObservableObject {
                 }
                 let doc = EditorDocument(text: s)
                 restored.append(doc)
+                trackDirtyState(of: doc)
                 doc.isDirty = true
                 // Rename the draft to the new doc's id so autosave reuses the
                 // same file and pruneStaleDrafts keeps owning it.
@@ -363,6 +455,7 @@ final class DocumentStore: ObservableObject {
                !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let doc = EditorDocument(text: s)
                 documents.append(doc)
+                trackDirtyState(of: doc)
                 doc.isDirty = true
                 // Rename old draft file to the new doc's file so prune/cleanup
                 // works and the next autosave overwrites the same file.
@@ -404,9 +497,9 @@ final class DocumentStore: ObservableObject {
     /// Persists the open tabs (in order) and which one is selected, so the
     /// next launch restores the session exactly. Untitled tabs are identified
     /// by their draft file name — deterministic (`<doc-id>.txt`) even before
-    /// the first auto-save writes it.
+    /// the first auto-save writes it. Preview tabs are not part of sessions.
     private func saveSession(documents: [EditorDocument]? = nil, selectedID: UUID? = nil) {
-        let docs = documents ?? self.documents
+        let docs = (documents ?? self.documents).filter { !$0.isPreview }
         let sel = selectedID ?? self.selectedID
         let entries = docs.map { doc -> SessionEntry in
             if let path = doc.fileURL?.path { return SessionEntry(filePath: path, draftFile: nil) }
@@ -603,7 +696,10 @@ final class DocumentStore: ObservableObject {
 
     // MARK: - Snippets
     func insertSnippet(_ snippet: TextSnippet) {
-        guard let doc = selectedDocument, let tv = textViews[doc.id] else { return }
+        guard let doc = selectedDocument, !doc.isPreview, let tv = textViews[doc.id] else {
+            NSSound.beep()
+            return
+        }
         let expansion = snippet.resolvedExpansion()
         let sel = tv.selectedRange()
         tv.shouldChangeText(in: sel, replacementString: expansion)

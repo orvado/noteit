@@ -24,6 +24,12 @@ struct NoteItCommands: Commands {
             }.keyboardShortcut("n", modifiers: [.command, .shift])
             Divider()
             Button("Open…") { store.open() }.keyboardShortcut("o", modifiers: .command)
+            Button("Open Folder…") {
+                NotificationCenter.default.post(name: .noteItOpenFolder, object: nil)
+            }.keyboardShortcut("o", modifiers: [.command, .option])
+            Button("Close Workspace") {
+                NotificationCenter.default.post(name: .noteItCloseWorkspace, object: nil)
+            }.disabled(!store.workspace.isOpen)
             Button("Quick Open…") {
                 NotificationCenter.default.post(name: .noteItQuickOpen, object: nil)
             }.keyboardShortcut("p", modifiers: .command)
@@ -93,6 +99,10 @@ struct NoteItCommands: Commands {
 
         // MARK: - View
         CommandGroup(after: .toolbar) {
+            Button("Toggle File Explorer") {
+                NotificationCenter.default.post(name: .noteItToggleExplorer, object: nil)
+            }.keyboardShortcut("\\", modifiers: .command)
+            Divider()
             Button("Appearance: System") { store.settings.appearance = .system }
             Button("Appearance: Light") { store.settings.appearance = .light }
             Button("Appearance: Dark") { store.settings.appearance = .dark }

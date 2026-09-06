@@ -14,6 +14,7 @@ Modern, fast, native macOS-only text editor. SwiftUI + `NSTextView`. Multiple do
 - **Language packs**: built-in snippet packs (~30 snippets each) for Python, JavaScript, Java, C#, C/C++, TypeScript, SQL, Go, Rust and Kotlin — include them via **Language Packs…** in the snippet manager; each pack shows as a folder whose snippets can be viewed, added, edited and deleted (edits persist even while a pack is turned off)
 - **Active language**: detected per tab from the file extension, or from content for unsaved files; override it in the status-bar picker (the manual choice sticks until the tab closes) — only the active language's pack snippets expand
 - **Syntax highlighting** for the 10 pack languages, with 9 color schemes (light + dark) configurable in Settings with a live preview; extensible per-language rule sets and theme catalog
+- **Workspace & file explorer**: open a folder (`⌥⌘O`) and browse it in a collapsible sidebar (`⌘\`) — single click previews a file in a read-only tab, double click opens it for editing, unsaved files show green; the workspace is remembered between launches
 - **Undo / Redo** (`⌘Z` `⇧⌘Z`), **Cut / Copy / Paste / Select All** (`⌘X C V A`) — native responder chain
 - **Find next / previous** (`⌘G` `⇧⌘G`), native Find panel also available
 - **Go to line** (`⌘L`)
@@ -61,6 +62,7 @@ Sources/NoteIt/
   AboutView.swift    — About dialog (features, credits, Apache 2.0 license)
   HelpView.swift     — in-app help browser (⌘?): detailed usage instructions per feature
   License.swift      — embedded Apache License 2.0 text (shown in About)
+  WorkspaceExplorer.swift — workspace folder tree (preview vs. edit, unsaved markers)
   Commands.swift     — all menus + shortcuts, Format gating
 Resources/Info.plist — app bundle metadata
 Resources/NoteIt.icns— app icon (generated)
@@ -75,6 +77,8 @@ scripts/make-icon.sh — icon render + icns packager (calls make-icon.swift)
 |---|---|
 | New tab / window | `⌘T` / `⇧⌘N` |
 | Open / Quick open | `⌘O` / `⌘P` |
+| Open folder (workspace) | `⌥⌘O` |
+| Toggle file explorer | `⌘\` |
 | Save / As / All | `⌘S` / `⇧⌘S` / `⌥⌘S` |
 | Find / Replace | `⌘F` / `⌥⌘F` |
 | Next / Prev | `⌘G` / `⇧⌘G` |

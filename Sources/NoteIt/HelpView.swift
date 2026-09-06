@@ -109,6 +109,26 @@ let helpTopics: [HelpTopic] = [
         ]
     ),
     HelpTopic(
+        id: "workspace", title: "Workspace & Explorer", icon: "sidebar.left",
+        subtitle: "Browsing a folder of files",
+        blocks: [
+            .text("Open any folder as a workspace to browse it in the collapsible pane on the left."),
+            .steps([
+                "Choose File ▸ Open Folder… (⌥⌘O) and pick a folder.",
+                "Browse the tree — folders expand on click, files are listed alphabetically (folders first, hidden files skipped).",
+                "Collapse or show the pane with the toolbar button or View ▸ Toggle File Explorer (⌘\\).",
+                "File ▸ Close Workspace clears the pane.",
+            ]),
+            .text("Files open two ways:"),
+            .bullets([
+                "Single click — preview: the file opens in a read-only tab (italic title, eye icon). One preview tab exists at a time and is reused as you click around; previews are never saved or restored as tabs.",
+                "Double click — open for editing: a normal editable tab; a preview of the same file is promoted in place instead of opening twice.",
+                "Files with unsaved changes are shown in green in the explorer (with a green dot) until auto-save or ⌘S writes them.",
+            ]),
+            .note("The explorer follows the app appearance (System/Light/Dark), re-reads folders via the Refresh context menu, and the workspace folder is remembered between launches. Right-click a file for Open, Preview, or Reveal in Finder."),
+        ]
+    ),
+    HelpTopic(
         id: "snippets", title: "Snippets", icon: "text.badge.plus",
         subtitle: "Triggers, Tab expansion, and placeholders",
         blocks: [

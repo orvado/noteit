@@ -11,24 +11,34 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showAbout = false
     @State private var showHelp = false
+    /// Collapsible workspace pane; persisted so relaunches keep the choice.
+    @AppStorage("NoteIt.explorerVisible") private var showExplorer = true
 
     var body: some View {
-        VStack(spacing: 0) {
-            tabBar
-            Divider()
-            if showFind || showReplace {
-                SearchReplaceBar(store: store, showFind: $showFind, showReplace: $showReplace)
+        HStack(spacing: 0) {
+            if showExplorer {
+                WorkspaceExplorer(store: store, workspace: store.workspace)
+                    .frame(width: 232)
                 Divider()
             }
-            editorArea
-            Divider()
-            if let doc = store.selectedDocument {
-                StatusBarView(doc: doc, store: store)
-            } else {
-                HStack { Text("No documents").font(.caption).foregroundStyle(.secondary); Spacer() }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.bar)
+            VStack(spacing: 0) {
+                tabBar
+                Divider()
+                if showFind || showReplace {
+                    SearchReplaceBar(store: store, showFind: $showFind, showReplace: $showReplace)
+                    Divider()
+                }
+                editorArea
+                Divider()
+                if let doc = store.selectedDocument {
+                    StatusBarView(doc: doc, store: store)
+                } else {
+                    HStack { Text("No documents").font(.caption).foregroundStyle(.secondary); Spacer() }
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(.bar)
+                }
             }
+            .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $showGoTo) { GoToLineSheet(store: store, isPresented: $showGoTo) }
         .sheet(isPresented: $showQuickOpen) { QuickOpenSheet(store: store, isPresented: $showQuickOpen) }
@@ -48,12 +58,28 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .noteItSettings)) { _ in showSettings = true }
         .onReceive(NotificationCenter.default.publisher(for: .noteItAbout)) { _ in showAbout = true }
         .onReceive(NotificationCenter.default.publisher(for: .noteItHelp)) { _ in showHelp = true }
+        .onReceive(NotificationCenter.default.publisher(for: .noteItOpenFolder)) { _ in
+            store.openWorkspacePanel()
+            showExplorer = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .noteItCloseWorkspace)) { _ in
+            store.closeWorkspace()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .noteItToggleExplorer)) { _ in
+            withAnimation { showExplorer.toggle() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .noteItFindNext)) { _ in store.findNext() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItFindPrev)) { _ in store.findPrevious() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItToggleWrap)) { _ in store.settings.wrapLines.toggle() }
         .onReceive(NotificationCenter.default.publisher(for: .noteItToggleSpell)) { _ in store.settings.spellcheck.toggle() }
         .focusedSceneValue(\.documentStore, store)
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button(action: { withAnimation { showExplorer.toggle() } }) {
+                    Image(systemName: "sidebar.leading")
+                }
+                .help("Toggle file explorer (⌘\\)")
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button(action: { store.selectedDocument.map { store.save($0) } }) {
                     Image(systemName: "square.and.arrow.down")
@@ -116,7 +142,8 @@ struct StatusBarView: View {
             Text("Ln \(doc.cursorLine), Col \(doc.cursorColumn)")
             Text("\(doc.wordCount) words")
             Text("\(doc.lineCount) lines")
-            if doc.isDirty { Text("● Unsaved").foregroundStyle(.orange) }
+            if doc.isPreview { Text("Preview").foregroundStyle(.secondary) }
+            else if doc.isDirty { Text("● Unsaved").foregroundStyle(.orange) }
             else { Text("Saved").foregroundStyle(.secondary) }
             if let url = doc.fileURL {
                 Text(url.lastPathComponent).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
@@ -165,11 +192,16 @@ struct TabChip: View {
     @ObservedObject var store: DocumentStore
     @State private var hoveringClose = false
 
+    private var tabIcon: String {
+        if doc.isPreview { return "eye" }
+        return doc.fileURL == nil ? "doc" : "doc.text.fill"
+    }
+
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: doc.fileURL == nil ? "doc" : "doc.text.fill")
+            Image(systemName: tabIcon)
                 .foregroundColor(isSelected ? .accentColor : .secondary).font(.caption)
-            Text(doc.displayTitle).lineLimit(1).font(.callout)
+            Text(doc.displayTitle).lineLimit(1).font(.callout).italic(doc.isPreview)
             closeButton
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -221,6 +253,9 @@ extension Notification.Name {    static let noteItToggleFind = Notification.Name
     static let noteItSettings = Notification.Name("noteItSettings")
     static let noteItAbout = Notification.Name("noteItAbout")
     static let noteItHelp = Notification.Name("noteItHelp")
+    static let noteItOpenFolder = Notification.Name("noteItOpenFolder")
+    static let noteItCloseWorkspace = Notification.Name("noteItCloseWorkspace")
+    static let noteItToggleExplorer = Notification.Name("noteItToggleExplorer")
     static let noteItFindNext = Notification.Name("noteItFindNext")
     static let noteItFindPrev = Notification.Name("noteItFindPrev")
     static let noteItToggleWrap = Notification.Name("noteItToggleWrap")

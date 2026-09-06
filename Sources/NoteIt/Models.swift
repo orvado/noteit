@@ -22,19 +22,32 @@ final class EditorDocument: ObservableObject, Identifiable, Equatable {
     @Published var cursorColumn: Int = 1
     /// When false the doc is plain-text only (no rich text / no formatting cmds).
     @Published var formattingEnabled: Bool = false
+    /// Preview tabs (single click in the file explorer): read-only, never
+    /// dirty, excluded from auto-save and session restore. Promoted to a
+    /// normal tab on double click.
+    @Published var isPreview: Bool
+
+    init(text: String = "", fileURL: URL? = nil, isPreview: Bool = false) {
+        self.text = text
+        self.fileURL = fileURL
+        self.isDirty = false
+        self.isPreview = isPreview
+        refreshLanguageDetection()
+    }
+
+    var title: String {
+        if let url = fileURL { return url.deletingPathExtension().lastPathComponent }
+        return "Untitled"
+    }
+
+    var displayTitle: String { isDirty ? "\(title) •" : title }
+
     /// The document's active snippet-pack language, or nil for "Unknown".
     @Published private(set) var activeLanguage: Language?
     /// True once the user picked a language manually (status-bar picker).
     /// Auto-detection then stays off for the rest of this document's life —
     /// even if the user switches back to Unknown.
     private(set) var languagePinnedByUser: Bool = false
-
-    init(text: String = "", fileURL: URL? = nil) {
-        self.text = text
-        self.fileURL = fileURL
-        self.isDirty = false
-        refreshLanguageDetection()
-    }
 
     /// Manual override from the status bar. Pinning survives save-as and
     /// content changes; only a fresh tab auto-detects again.
@@ -55,13 +68,6 @@ final class EditorDocument: ObservableObject, Identifiable, Equatable {
             activeLanguage = nil
         }
     }
-
-    var title: String {
-        if let url = fileURL { return url.deletingPathExtension().lastPathComponent }
-        return "Untitled"
-    }
-
-    var displayTitle: String { isDirty ? "\(title) •" : title }
 
     var wordCount: Int {
         let words = text.components(separatedBy: CharacterSet.whitespacesAndNewlines).filter { !$0.isEmpty }
